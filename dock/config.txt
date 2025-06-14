@@ -1,0 +1,10 @@
+ligand = 5xra_C_8D3.pdbqt
+receptor = ref_pro.pdbqt
+out = docked_5xra_C_8D3.pdbqt
+center_x = 89
+center_y = 130
+center_z = 115
+size_x = 20
+size_y = 20
+size_z = 20
+seed = 1234
