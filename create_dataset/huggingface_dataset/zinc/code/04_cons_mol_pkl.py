@@ -1,1 +1,0 @@
-# run "python preprocess_mol_pkl.py" in the ./zinc file
