@@ -1,15 +1,9 @@
 """
 Drug-target binding affinity datasets
 """
-import json
 import os
-from functools import partial
-from pathlib import Path
-# import dgl
 import torch
 from torch_geometric.data import Batch
-# from torch_geometric.utils import batch
-# from .pdbbind_utils import data_from_index
 import numpy as np
 import pandas as pd
 import torch.utils.data as data
@@ -30,6 +24,8 @@ class DTA(data.Dataset):
     """
     Base class for loading drug-target binding affinity datasets.
     Adapted from: https://github.com/drorlab/gvp-pytorch/blob/main/gvp/data.py
+
+    This class is used to train model, where labels is needed.
     """
     def __init__(self, data_list=None):
 
@@ -40,81 +36,107 @@ class DTA(data.Dataset):
         return len(self.data_list)
 
     def __getitem__(self, idx):
-        drug = self.data_list[idx]['drug_graph']
-        prot = self.data_list[idx]['protein_graph']
-        full_seq = self.data_list[idx]['full_sequence']
-        poc_seq = self.data_list[idx]['pocket_sequence']
-        smile_encode = self.data_list[idx]['smile_sequence']
-        smile = self.data_list[idx]['smile']
-        y = self.data_list[idx]['y']
+        if self.data_list[idx]['y'] is not None:
+            drug = self.data_list[idx]['drug_graph']
+            prot = self.data_list[idx]['protein_graph']
+            full_seq = self.data_list[idx]['full_sequence']
+            poc_seq = self.data_list[idx]['pocket_sequence']
+            smile_encode = self.data_list[idx]['smile_sequence']
+            smile = self.data_list[idx]['smile']
+            y = self.data_list[idx]['y']
 
-        # item = {'drug': drug, 'protein': prot, 'y': y}
-        return drug, prot, full_seq, poc_seq, smile_encode, float(y), smile
+            return drug, prot, full_seq, poc_seq, smile_encode, float(y), smile
 
-    def collate(self, sample):
-        batch_size = len(sample)
-        # print(f'batch_size: {batch_size}')
-        compound_graph, protein_graph, full_seq, poc_seq, smile_seq, label, smile = map(list, zip(*sample))
-        compound_graph = Batch.from_data_list(compound_graph)
-        protein_graph = Batch.from_data_list(protein_graph)
-        full_seq = torch.tensor(np.array(full_seq)).long()
-        poc_seq = torch.tensor(np.array(poc_seq)).long()
-        smile_seq = torch.tensor(np.array(smile_seq)).long()
-        SMILE = list(smile)
-        # print(full_seq, poc_seq)
-        label = torch.FloatTensor(label)
+        else:
+            drug = self.data_list[idx]['drug_graph']
+            prot = self.data_list[idx]['protein_graph']
+            full_seq = self.data_list[idx]['full_sequence']
+            poc_seq = self.data_list[idx]['pocket_sequence']
+            smile_encode = self.data_list[idx]['smile_sequence']
+            smile = self.data_list[idx]['smile']
 
-        item = {'drug': compound_graph, 'protein': protein_graph, 'full_seq': full_seq, 'poc_seq': poc_seq,
-                'smile_seq': smile_seq, 'y': label, 'SMILES': SMILE}
-        return item
-
-
-class DTA_zinc(data.Dataset):
-    """
-    Base class for loading drug-target binding affinity datasets.
-    Adapted from: https://github.com/drorlab/gvp-pytorch/blob/main/gvp/data.py
-    """
-    def __init__(self, data_list=None):
-
-        super(DTA_zinc, self).__init__()
-        self.data_list = data_list
-
-    def __len__(self):
-        return len(self.data_list)
-
-    def __getitem__(self, idx):
-        drug = self.data_list[idx]['drug_graph']
-        prot = self.data_list[idx]['protein_graph']
-        full_seq = self.data_list[idx]['full_sequence']
-        poc_seq = self.data_list[idx]['pocket_sequence']
-        smile_encode = self.data_list[idx]['smile_sequence']
-        smile = self.data_list[idx]['smile']
-
-        return drug, prot, full_seq, poc_seq, smile_encode, smile
+            return drug, prot, full_seq, poc_seq, smile_encode, smile
 
     def collate(self, sample):
-        batch_size = len(sample)
+        # batch_size = len(sample)
         # print(f'batch_size: {batch_size}')
-        compound_graph, protein_graph, full_seq, poc_seq, smile_seq, smile = map(list, zip(*sample))
-        compound_graph = Batch.from_data_list(compound_graph)
-        protein_graph = Batch.from_data_list(protein_graph)
-        full_seq = torch.tensor(np.array(full_seq)).long()
-        poc_seq = torch.tensor(np.array(poc_seq)).long()
-        smile_seq = torch.tensor(np.array(smile_seq)).long()
-        SMILE = list(smile)
-        # print(full_seq, poc_seq)
+        if len(map(list, zip(*sample))) == 7:
+            compound_graph, protein_graph, full_seq, poc_seq, smile_seq, label, smile = map(list, zip(*sample))
+            compound_graph = Batch.from_data_list(compound_graph)
+            protein_graph = Batch.from_data_list(protein_graph)
+            full_seq = torch.tensor(np.array(full_seq)).long()
+            poc_seq = torch.tensor(np.array(poc_seq)).long()
+            smile_seq = torch.tensor(np.array(smile_seq)).long()
+            SMILE = list(smile)
+            label = torch.FloatTensor(label)
 
-        item = {'drug': compound_graph, 'protein': protein_graph, 'full_seq': full_seq, 'poc_seq': poc_seq,
-                'smile_seq': smile_seq, 'SMILES': SMILE}
-        return item
+            item = {'drug': compound_graph, 'protein': protein_graph, 'full_seq': full_seq, 'poc_seq': poc_seq,
+                    'smile_seq': smile_seq, 'y': label, 'SMILES': SMILE}
+            return item
+
+        elif len(map(list, zip(*sample))) == 6:
+            compound_graph, protein_graph, full_seq, poc_seq, smile_seq, smile = map(list, zip(*sample))
+            compound_graph = Batch.from_data_list(compound_graph)
+            protein_graph = Batch.from_data_list(protein_graph)
+            full_seq = torch.tensor(np.array(full_seq)).long()
+            poc_seq = torch.tensor(np.array(poc_seq)).long()
+            smile_seq = torch.tensor(np.array(smile_seq)).long()
+            SMILE = list(smile)
+
+            item = {'drug': compound_graph, 'protein': protein_graph, 'full_seq': full_seq, 'poc_seq': poc_seq,
+                    'smile_seq': smile_seq, 'SMILES': SMILE}
+            return item
+
+        else:
+            raise ValueError(
+                f"Unexpected number of elements in sample. Expected 6 or 7, but got {len(map(list, zip(*sample)))}.")
+
+
+# class DTA_inference(data.Dataset):
+#     """
+#     If you wang to use this model to predict new data, this class should be used. (Don't need to provide labels)
+#     """
+#     def __init__(self, data_list=None):
+#
+#         super(DTA_inference, self).__init__()
+#         self.data_list = data_list
+#
+#     def __len__(self):
+#         return len(self.data_list)
+#
+#     def __getitem__(self, idx):
+#         drug = self.data_list[idx]['drug_graph']
+#         prot = self.data_list[idx]['protein_graph']
+#         full_seq = self.data_list[idx]['full_sequence']
+#         poc_seq = self.data_list[idx]['pocket_sequence']
+#         smile_encode = self.data_list[idx]['smile_sequence']
+#         smile = self.data_list[idx]['smile']
+#
+#         return drug, prot, full_seq, poc_seq, smile_encode, smile
+#
+#     def collate(self, sample):
+#         # batch_size = len(sample)
+#         # print(f'batch_size: {batch_size}')
+#
+#         compound_graph, protein_graph, full_seq, poc_seq, smile_seq, smile = map(list, zip(*sample))
+#         compound_graph = Batch.from_data_list(compound_graph)
+#         protein_graph = Batch.from_data_list(protein_graph)
+#         full_seq = torch.tensor(np.array(full_seq)).long()
+#         poc_seq = torch.tensor(np.array(poc_seq)).long()
+#         smile_seq = torch.tensor(np.array(smile_seq)).long()
+#         SMILE = list(smile)
+#
+#         item = {'drug': compound_graph, 'protein': protein_graph, 'full_seq': full_seq, 'poc_seq': poc_seq,
+#                 'smile_seq': smile_seq, 'SMILES': SMILE}
+#         return item
 
 class DTATask(object):
     """
-    Drug-target binding task (e.g., pdbbind_v2021 or ).
+    Drug-target affinity task.
     """
     def __init__(self,
             task_name=None,
-            split_method = 'new_protein',
+            split_method = None,
             train_data=None, valid_data=None, test_data=None,
             train_pdb_data=None, valid_pdb_data=None, test_pdb_data=None,
             train_sdf_data=None, valid_sdf_data=None, test_sdf_data=None,
@@ -154,6 +176,8 @@ class DTATask(object):
             "seq": _data["seq"],
             "coords": list(zip(_coords["N"], _coords["CA"], _coords["C"], _coords["O"])),
         }
+        # If protein language model embedding(such as ESM-C, ProtTrans) is provided, this will load it.
+        # But in this work,we don't use it. So self.emb_dir is None
         if self.emb_dir is not None:
             embed_file = f"{_data['PDB_id']}.{_data['chain']}.pt"
             entry["embed"] = f"{self.emb_dir}/{embed_file}"
@@ -163,8 +187,10 @@ class DTATask(object):
     def pdb_graph_db(self):
         if self._pdb_graph_db is None:
             pdbid_entry = {}
+            # Training phase, where dataset is split into training, valid, test dataset
             if self.test_pdb_data is not None and self.valid_pdb_data is not None:
                 combined_pdb_data = {**self.train_pdb_data, **self.valid_pdb_data, **self.test_pdb_data}
+            # Inference phase, where only test dataset is provided.
             else:
                 combined_pdb_data = {**self.test_pdb_data}
 
@@ -176,8 +202,10 @@ class DTATask(object):
     @property
     def drug_sdf_db(self):
         if self._drug_sdf_db is None:
+            # Training phase, where dataset is split into training, valid, test dataset
             if self.train_sdf_data is not None and self.valid_sdf_data is not None:
                 combined_sdf_data = {**self.train_sdf_data, **self.valid_sdf_data, **self.test_sdf_data}
+            # Inference phase, where only test dataset is provided.
             else:
                 combined_sdf_data = {**self.test_sdf_data}
 
@@ -210,7 +238,7 @@ class DTATask(object):
         x = np.zeros(self.max_smi_len)
 
         for i, ch in enumerate(smiles[:self.max_smi_len]):
-            x[i] = CHARISOSMISET[ch]
+            x[i] = CHARISOSMISET.get(ch, 66) # Default is 66
 
         return x
 
@@ -221,7 +249,7 @@ class DTATask(object):
         return res
 
 
-    def build_data(self, data, split, save_processed_file):
+    def build_data_when_training(self, data, split, save_processed_file):
         records = data.to_dict('records')
         # print(records)
         data_list = []
@@ -234,12 +262,12 @@ class DTATask(object):
             for entry in records:
                 # print(entry)
                 pdb_id = entry['PDBname']
-                pf = self.pdb_graph_db[pdb_id]
                 df = self.drug_sdf_db[pdb_id]
-
+                pf = self.pdb_graph_db[pdb_id]
                 seq = entry['Sequence']
                 position = eval(entry['Position'])
                 smile = entry['Smile']
+
                 smile_encode = self.smiles2onehot(smile)
                 pocket = self.position_seq(seq, position)
                 seq_encode = self.label_seq(seq, self.max_seq_len)
@@ -265,11 +293,11 @@ class DTATask(object):
         return data
 
     # with dataset without label
-    def build_data_without_label(self, data, save_processed_file):
+    def build_data_when_inference(self, data, save_processed_file):
         records = data.to_dict('records')
         data_list = []
-        if os.path.exists(f'./create_dataset/zinc/processed_data_dict.pkl.gz'):
-            with gzip.open(f'./create_dataset/zinc/processed_data_dict.pkl.gz', 'rb') as f:
+        if os.path.exists(f'./create_dataset/zinc/processed_data_dict_new.pkl.gz'):
+            with gzip.open(f'./create_dataset/zinc/processed_data_dict_new.pkl.gz', 'rb') as f:
                 data_list = pickle.load(f)
             print("Data is loaded from file!")
         else:
@@ -279,9 +307,20 @@ class DTATask(object):
                 pf = self.pdb_graph_db['target']
                 df = self.drug_sdf_db[pdb_id]
 
-                seq = entry['protein']
-                position = eval(entry['position'])
-                smile = entry['smiles']
+                # When virtual screening phase, you can replace 'seq' and 'position' manually
+
+                # protein_sequence_CB1R
+                seq = 'GENFMDIECFMVLNPSQQLAIAVLSLTLGTFTVLENLLVLCVILHSRSLRCRPSYHFIGSLAVADLLGSVIFVYSFIDFHVFHRKDSRNVFLFKLGGVTASFTASVGSLFLAAIDRYISIHRPLAYKRIVTRPKAVVAFCLMWTIAIVIAVLPLLGWNCEKLQSVCSDIFPHIDKTYLMFWIGVVSVLLLFIVYAYMYILWKAHSHAVAKALIVYGSTTGNTEYTAETIARELADAGYEVDSRDAASVEAGGLFEGFDLVLLGCSTWGDDSIELQDDFIPLFDSLEETGAQGRKVACFGCGDSSWEYFCGAVDAIEEKLKNLGAEIVQDGLRIDGDPRAARDDIVGWAHDVRGAIPDQARMDIELAKTLVLILVVLIICWGPLLAIMVYDVFGKMNKLIKTVFAFCSMLCLLNSTVNPIIYALRSKDLRHAFRSMFPS'
+                # protein_sequence_HCAR1
+                # seq = 'CCRIEGDTISQVMPPLLIVAFVLGALGNGVALCGFCFHMKTWKPSTVYLFNLAVADFLLMICLPFRTDYYLRRRHWAFGDIPCRVGLFTLAMNRAGSIVFLTVVAADRYFKVVHPHHAVNTISTRVAAGIVCTLWALVILGTVYLLLENHLCVQETAVSCESFIMESANGWHDIMFQLEFFMPLGIILFCSFKIVWSLRRRQQLARQARMKKATRFIMVVAIVFITCYLPSVSARLYFLWTVPSSACDPSVHGALHITLSFTYMNSMLDPLVYYFSSPSLDQLRQEAEQLKNQIRDARKACADATLSQITNNIDPVGRIQMRTRRTLRGHLAKIYAMHWGTDSRLLVSASQDGKLIIWDSYTTNKVHAIPLRSSWVMTCAYAPSGNYVACGGLDNICSIYNLKTREGNVRVSRELAGHTGYLSCCRFLDDNQIVTSSGDTTCALWDIETGQQTTTFTGHTGDVMSLSLAPDTRLFVSGACDASAKLWDVREGMCRQTFTGHESDINAICFFPNGNAFATGSDDATCRLFDLRADQELMTYSHDNIICGITSVSFSKSGRLLLAGYDDFNCNVWDALKADRAGVLAGHDNRVSCLGVTDDGMAVATGSWDSFLKIWNTLSAEDKAAVERSKMIDRNLREDGEKAAREVKLLLLGAGESGKSTIVKQMTGIVETHFTFKDLHFKMFDVGAQRSERKKWIHCFEGVTAIIFCVALSDYDLVNRMHESMKLFDSICNNKWFTDTSIILFLNKKDLFEEKIKKSPLTICYPEYAGSNTYEEAAAYIQCQFEDLNKRKDTKEIYTHFTCSTDTKNVQFVFDAVTDVIIKNNLKDCGLFSIAQARKLVEQLKMEANIDRIKVSKAAADLMAYCEAHAKEDPLLTPVPASENPFREDVQLVESGGGLVQPGGSRKLSCSASGFAFSSFGMHWVRQAPEKGLEWVAYISSGSGTIYYADTVKGRFTISRDDPKNTLFLQMTSLRSEDTAMYYCVRSIYYYGSSPFDFWGQGTTLTVSSSDIVMTQATSSVPVTPGESVSISCRSSKSLLHSNGNTYLYWFLQRPGQSPQLLIYRMSNLASGVPDRFSGSGSGTAFTLTISRLEAEDVGVYYCMQHLEYPLTFGAGTKLEL'
+
+                # pocket_position_CB1R
+                position = [10, 12, 72, 75, 76, 79, 80, 86, 91, 94, 95, 98, 99, 102, 168, 169, 170, 171, 173, 177, 178, 181, 380, 383, 387, 400, 401, 403, 404, 407, 410]
+                # pocket_position_HCAR1
+                # position = [9, 13, 14, 16, 17, 58, 59, 62, 63, 64, 65, 66, 67, 69, 70, 74, 83, 84, 85, 86, 87, 88, 89,
+                #             90, 91, 92, 93, 94, 95, 142, 144, 145, 150, 159, 160, 161, 162, 163, 164, 165, 172, 175,
+                #             176, 179, 228, 231, 235, 252, 253, 254, 255, 256, 257, 258, 259, 260, 261, 262, 263, 266]
+                smile = entry['SMILES']
                 smile_encode = self.smiles2onehot(smile)
                 pocket = self.position_seq(seq, position)
                 seq_encode = self.label_seq(seq, self.max_seq_len)
@@ -297,27 +336,28 @@ class DTATask(object):
                     'smile': smile
                 })
 
-            # 保存数据到文件
             if save_processed_file:
-                with gzip.open('./create_dataset/zinc/processed_data_dict.pkl.gz', 'wb') as f:
+                with gzip.open('./create_dataset/zinc/processed_data_dict_new.pkl.gz', 'wb') as f:
                     pickle.dump(data_list, f)
                 print("Data is saved in the file!")
 
-        data = DTA_zinc(data_list=data_list)
+        data = DTA(data_list=data_list)
         return data
 
     def get_split(self):
         split_df = {'train': self.train_data, 'valid': self.valid_data, 'test': self.test_data}
         split_data = {}
+        # Training phase, where dataset is split into training, valid, test dataset
         if self.train_data is not None and self.valid_data is not None:
-            split_data['train'] = self.build_data(self.train_data, split='train', save_processed_file=True)
-            split_data['valid'] = self.build_data(self.valid_data, split='valid', save_processed_file=True)
-            split_data['test'] = self.build_data(self.test_data, split='test', save_processed_file=True)
+            split_data['train'] = self.build_data_when_training(self.train_data, split='train', save_processed_file=True)
+            split_data['valid'] = self.build_data_when_training(self.valid_data, split='valid', save_processed_file=True)
+            split_data['test'] = self.build_data_when_training(self.test_data, split='test', save_processed_file=True)
             print("train_dataset size: ", len(split_data['train']), "valid_dataset size: ", len(split_data['valid']),
                   "test_dataset size: ", len(split_data['test']))
+        # Inference phase, where only test dataset is provided.
         else:
             # zinc dataset
-            split_data['test'] = self.build_data_without_label(self.test_data, save_processed_file=True)
+            split_data['test'] = self.build_data_when_inference(self.test_data, save_processed_file=True)
             print("Only test dataset! test_dataset size: ", len(split_data['test']))
 
         return split_data, split_df
@@ -336,8 +376,8 @@ class pdbbind_v2016(DTATask):
             train_sdf='./create_dataset/pdbbind_v2016/mol_structures_train.pkl.gz',
             valid_sdf='./create_dataset/pdbbind_v2016/mol_structures_valid.pkl.gz',
             test_sdf='./create_dataset/pdbbind_v2016/mol_structures_test.pkl.gz',
-            num_pos_emb=16, num_rbf=16, max_seq_len=1024, # 1024 run at 800 originally， 1024 is better than 800,800
-            contact_cutoff=8., max_smi_len=128, #256， 128 is better than 256,64,100
+            num_pos_emb=16, num_rbf=16, max_seq_len=1024, max_smi_len=128,
+            contact_cutoff=8.,
         ):
         train_data = pd.read_csv(train_path)
         valid_data = pd.read_csv(valid_path)
@@ -437,7 +477,8 @@ class pdbbind_v2021_similarity(DTATask):
     """
     def __init__(self,
             setting='new_new', thre=0.5,
-            num_pos_emb=16, num_rbf=16, max_seq_len=800, max_smi_len=256,
+            num_pos_emb=16, num_rbf=16, max_seq_len=800, # 1024
+            max_smi_len=256, # 128
             contact_cutoff=8.,
         ):
 
@@ -485,8 +526,8 @@ class lp_pdbbind(DTATask):
             train_sdf='./create_dataset/lp_pdbbind/mol_structures_train.pkl.gz',
             valid_sdf='./create_dataset/lp_pdbbind/mol_structures_valid.pkl.gz',
             test_sdf='./create_dataset/lp_pdbbind/mol_structures_test.pkl.gz',
-            num_pos_emb=16, num_rbf=16, max_seq_len=1024, # 1024 run at 800 originally， 1024 is better than 800,800
-            contact_cutoff=8., max_smi_len=128, #256， 128 is better than 256,64,100
+            num_pos_emb=16, num_rbf=16, max_seq_len=1024,
+            contact_cutoff=8., max_smi_len=128,
         ):
         train_data = pd.read_csv(train_path, index_col=0)
         valid_data = pd.read_csv(valid_path, index_col=0)
@@ -516,8 +557,8 @@ class zinc(DTATask):
             test_path='./create_dataset/zinc/processed_zinc_CB1R.csv',
             test_pdb='./create_dataset/zinc/pocket_structures.pkl.gz',
             test_sdf='./create_dataset/zinc/mol_structures.pkl.gz',
-            num_pos_emb=16, num_rbf=16, max_seq_len=1024, # 1024 run at 800 originally， 1024 is better than 800,800
-            contact_cutoff=8., max_smi_len=128, #256， 128 is better than 256,64,100
+            num_pos_emb=16, num_rbf=16, max_seq_len=1024, max_smi_len=128,
+            contact_cutoff=8.,
         ):
         test_data = pd.read_csv(test_path)
         test_pdb_data = load_dict(test_pdb)

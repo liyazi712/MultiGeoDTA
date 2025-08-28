@@ -1,5 +1,4 @@
 import copy
-import pickle
 import numpy as np
 import pandas as pd
 from joblib import Parallel, delayed
@@ -9,7 +8,6 @@ from pathlib import Path
 import torch.nn.functional as F
 from torch import nn
 from torch.utils.data import DataLoader
-from tqdm import tqdm
 import torch.nn.init as init
 from MultiGeoDTA.dta import pdbbind_v2016, pdbbind_v2020, pdbbind_v2021_time, pdbbind_v2021_similarity, lp_pdbbind, zinc
 from MultiGeoDTA.model import DTAModel
@@ -18,9 +16,7 @@ from MultiGeoDTA.metrics import evaluation_metrics
 
 def init_weights(m):
     if isinstance(m, nn.Linear):
-        # 使用He初始化（Kaiming初始化）均匀分布初始化权重
         init.kaiming_uniform_(m.weight)
-        # 如果有偏置项，初始化为0
         if m.bias is not None:
             init.zeros_(m.bias)
 
@@ -35,69 +31,61 @@ def _parallel_train_per_epoch(kwargs=None, n_epochs=None, eval_freq=None, monito
     device = kwargs['device']
     best_model_state_dict = kwargs['best_model_state_dict']
 
-    # 初始化早停机制
     stopper = EarlyStopping(patience=20, eval_freq=eval_freq, higher_better=False)
 
     model = model.to(device)
     model.train()
     model.apply(init_weights)
-    for epoch in range(1, n_epochs + 1):
-        total_loss = 0
-        total_loss_pred = 0
-        total_loss_ps = 0
-        total_loss_cs = 0
-        for step, batch in enumerate(train_loader, start=1):
-            xd = batch['drug'].to(device)
-            xp = batch['protein'].to(device)
-            protein_seq = batch['full_seq'].to(device)
-            pocket_seq = batch['poc_seq'].to(device)
-            smile_seq = batch['smile_seq'].to(device)
-            y = torch.tensor([float(item) for item in batch['y']]).to(device)
-            optimizer.zero_grad()
-            yh, compound_feats, protein_feats, seq_feats, smile_feats = model(xd, xp, protein_seq, pocket_seq, smile_seq)
-            # print(compound_feats, protein_feats, seq_feats)
-            loss_pred = loss_fn(yh, y.view(-1, 1))
+    with torch.cuda.device(device):
+        for epoch in range(1, n_epochs + 1):
+            total_loss = 0
+            total_loss_pred = 0
+            total_loss_ps = 0
+            total_loss_cs = 0
+            for step, batch in enumerate(train_loader, start=1):
+                xd = batch['drug'].to(device)
+                xp = batch['protein'].to(device)
+                protein_seq = batch['full_seq'].to(device)
+                pocket_seq = batch['poc_seq'].to(device)
+                smile_seq = batch['smile_seq'].to(device)
+                y = torch.tensor([float(item) for item in batch['y']]).to(device)
+                optimizer.zero_grad()
+                yh, compound_feats, protein_feats, seq_feats, smile_feats = model(xd, xp, protein_seq, pocket_seq, smile_seq)
 
-            loss_ps = loss_fn(protein_feats, seq_feats)
-            loss_cs = loss_fn(compound_feats, smile_feats)
-            loss = loss_pred + 10 * loss_ps + 10 * loss_cs
-            # loss = loss_pred
+                loss_pred = loss_fn(yh, y.view(-1, 1))
+                loss_ps = loss_fn(protein_feats, seq_feats)
+                loss_cs = loss_fn(compound_feats, smile_feats)
+                loss = loss_pred + 10 * loss_ps + 10 * loss_cs
 
-            loss.backward()
-            optimizer.step()
-            total_loss += loss.item()
-            total_loss_pred += loss_pred.item()
-            total_loss_ps += loss_ps.item()
-            total_loss_cs += loss_cs.item()
+                loss.backward()
+                optimizer.step()
+                total_loss += loss.item()
+                total_loss_pred += loss_pred.item()
+                total_loss_ps += loss_ps.item()
+                total_loss_cs += loss_cs.item()
 
-        train_loss = total_loss / len(train_loader)
-        loss_pred = total_loss_pred / len(train_loader)
-        loss_ps = total_loss_ps / len(train_loader)
-        loss_cs = total_loss_cs / len(train_loader)
+            train_loss = total_loss / len(train_loader)
+            loss_pred = total_loss_pred / len(train_loader)
+            loss_ps = total_loss_ps / len(train_loader)
+            loss_cs = total_loss_cs / len(train_loader)
 
-        if epoch % eval_freq == 0:
-            val_results = _parallel_test(
-                {'model': model, 'midx': midx, 'test_loader': valid_loader, 'device': device},
-                loss_fn=loss_fn, logger=logger
-            )
-            is_best = stopper.update(val_results['metrics'][monitoring_score])
-            if is_best:
-                best_model_state_dict = copy.deepcopy(model.state_dict())
-            logger.info(f"M-{midx} E-{epoch}| Train Loss: {train_loss:.2f} | loss_pred: {loss_pred:.3f} | "
-                        f"loss_ps: {loss_ps:.3f} loss_cs: {loss_cs:.3f}| Valid Loss: {val_results['loss']:.2f} |" \
-                        + ' | '.join([f'{k}: {v:.3f}' for k, v in val_results['metrics'].items()])
-                        + f" | best {monitoring_score}: {stopper.best_score:.3f}"
-                        )
+            if epoch % eval_freq == 0:
+                val_results = _parallel_test(
+                    {'model': model, 'midx': midx, 'test_loader': valid_loader, 'device': device},
+                    loss_fn=loss_fn, logger=logger
+                )
+                is_best = stopper.update(val_results['metrics'][monitoring_score])
+                if is_best:
+                    best_model_state_dict = copy.deepcopy(model.state_dict())
+                logger.info(f"M-{midx} E-{epoch}| Train Loss: {train_loss:.2f} | loss_pred: {loss_pred:.3f} | "
+                            f"loss_ps: {loss_ps:.3f} loss_cs: {loss_cs:.3f}| Valid Loss: {val_results['loss']:.2f} |" \
+                            + ' | '.join([f'{k}: {v:.3f}' for k, v in val_results['metrics'].items()])
+                            + f" | best {monitoring_score}: {stopper.best_score:.3f}"
+                            )
 
-            # logger.info(f"M-{midx} E-{epoch}| Train Loss: {train_loss:.2f} | loss_pred: {loss_pred:.3f} | "
-            #             f"Valid Loss: {val_results['loss']:.2f} |" \
-            #             + ' | '.join([f'{k}: {v:.3f}' for k, v in val_results['metrics'].items()])
-            #             + f" | best {monitoring_score}: {stopper.best_score:.3f}"
-            #             )
-
-        if stopper.early_stop:
-            logger.info('Early stopping triggered at epoch {}'.format(epoch))
-            break
+            if stopper.early_stop:
+                logger.info('Early stopping triggered at epoch {}'.format(epoch))
+                break
 
     if best_model_state_dict is not None:
         model.load_state_dict(best_model_state_dict)
@@ -126,42 +114,28 @@ def _parallel_test(
     test_loader = kwargs['test_loader']
     model.eval()
     yt, yp, total_loss = torch.Tensor(), torch.Tensor(), 0
-    feats_list = {
-        'compound_feats': [],
-        'protein_feats': [],
-        'seq_feats': [],
-        'smile_feats': []
-    }
-    with torch.no_grad():
-        for step, batch in enumerate(test_loader, start=1):
-            xd = batch['drug'].to(device)
-            xp = batch['protein'].to(device)
-            protein_seq = batch['full_seq'].to(device)
-            pocket_seq = batch['poc_seq'].to(device)
-            smile_seq = batch['smile_seq'].to(device)
-            y = torch.tensor([float(item) for item in batch['y']]).to(device)
-            yh, compound_feats, protein_feats, seq_feats, smile_feats = model(xd, xp, protein_seq, pocket_seq, smile_seq)
-            loss_pred = loss_fn(yh, y.view(-1, 1))
+    with torch.cuda.device(device):
+        with torch.no_grad():
+            for step, batch in enumerate(test_loader, start=1):
+                xd = batch['drug'].to(device)
+                xp = batch['protein'].to(device)
+                protein_seq = batch['full_seq'].to(device)
+                pocket_seq = batch['poc_seq'].to(device)
+                smile_seq = batch['smile_seq'].to(device)
+                y = torch.tensor([float(item) for item in batch['y']]).to(device)
+                yh, protein_feats, seq_feats, compound_feats, smile_feats = model(xd, xp, protein_seq, pocket_seq, smile_seq)
 
-            loss_ps = loss_fn(protein_feats, seq_feats)
-            loss_cs = loss_fn(compound_feats, smile_feats)
-            loss = loss_pred + 10 * loss_ps + 10 * loss_cs
+                loss_pred = loss_fn(yh, y.view(-1, 1))
+                loss_ps = loss_fn(protein_feats, seq_feats)
+                loss_cs = loss_fn(compound_feats, smile_feats)
+                loss = loss_pred + 10 * loss_ps + 10 * loss_cs
+                total_loss += loss.item()
 
-            # loss = loss_pred
-
-            total_loss += loss.item()
-            yp = torch.cat([yp, yh.detach().cpu()], dim=0)
-            yt = torch.cat([yt, y.detach().cpu()], dim=0)
-            # feats_list['compound_feats'].append(compound_feats.detach().cpu().numpy())
-            # feats_list['protein_feats'].append(protein_feats.detach().cpu().numpy())
-            # feats_list['seq_feats'].append(seq_feats.detach().cpu().numpy())
-            # feats_list['smile_feats'].append(smile_feats.detach().cpu().numpy())
+                yp = torch.cat([yp, yh.detach().cpu()], dim=0)
+                yt = torch.cat([yt, y.detach().cpu()], dim=0)
 
     yt = yt.numpy()
     yp = yp.view(-1).numpy()
-    # 保存特征到文件
-    # with open(f'./MultiGeoDTA/output/features/with/feats_{midx}.pkl', 'wb') as f:
-    #     pickle.dump(feats_list, f)
     results = {
         'midx': midx,
         'y_true': yt,
@@ -283,16 +257,7 @@ class DTAExperiment(object):
         results: dict with keys y_pred, y_true
         """
         df = self.task_df['test'].copy() if test_df is None else test_df.copy()
-        if self.task == 'pdbbind_v2016':
-            # df.columns = ['pdb_id', 'smile', 'sequence', 'pocket', 'position', 'label']
-            df.columns = ['num', 'pdb_id', 'smile', 'sequence', 'pocket', 'position', 'label']
-        elif self.task == 'pdbbind_v2020' or 'lp_pdbbind':
-            df.columns = ['pdb_id', 'smile', 'sequence', 'pocket', 'position', 'label']
-        elif self.task == 'pdbbind_v2021_time' or 'pdbbind_v2021_similarity':
-            df.columns = ['pdb_id', 'smile', 'sequence', 'pocket', 'position', 'label', 'resolution', 'release_year']
-        else:
-            df.columns = ['num', 'pdb_id', 'smile', 'sequence', 'pocket', 'position', 'label']
-        df['y_pred'] = results['y_pred']
+        df['y_pred_avg'] = results['y_pred_avg']
         print(df)
 
         if esb_yp is not None:
@@ -300,7 +265,7 @@ class DTAExperiment(object):
                 df[f'y_pred_{i + 1}'] = esb_yp[i]
         return df
 
-    def train(self, n_epochs=None, patience=None, eval_freq=1, test_freq=None,
+    def train(self, n_epochs=None, patience=None, eval_freq=1,
                 monitoring_score='mse', rebuild_model=False, test_after_train=True):
         n_epochs = n_epochs or self.n_epochs
         if rebuild_model:
@@ -434,7 +399,6 @@ class DTAExperiment(object):
         final_eval_metrics = evaluation_metrics(rets['y_true'], y_pred_avg, eval_metrics=metric_names)
         model_metrics_list.append(pd.Series(final_eval_metrics, name='Ensemble'))
 
-        # 将所有的 Series 对象合并为一个 DataFrame
         all_metrics_df = pd.concat(model_metrics_list, axis=1)
         print(all_metrics_df)
 

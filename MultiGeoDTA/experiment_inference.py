@@ -16,15 +16,16 @@ def _parallel_test(kwargs=None):
     model.eval()
     yp = torch.Tensor()
 
-    with torch.no_grad():
-        for step, batch in tqdm(enumerate(test_loader, start=1), total=len(test_loader), desc=f"Testing {midx}"):
-            xd = batch['drug'].to(device)
-            xp = batch['protein'].to(device)
-            protein_seq = batch['full_seq'].to(device)
-            pocket_seq = batch['poc_seq'].to(device)
-            smile_seq = batch['smile_seq'].to(device)
-            yh, compound_feats, protein_feats, seq_feats, smile_feats = model(xd, xp, protein_seq, pocket_seq, smile_seq)
-            yp = torch.cat([yp, yh.detach().cpu()], dim=0)
+    with torch.cuda.device(device):
+        with torch.no_grad():
+            for step, batch in tqdm(enumerate(test_loader, start=1), total=len(test_loader), desc=f"Testing {midx}"):
+                xd = batch['drug'].to(device)
+                xp = batch['protein'].to(device)
+                protein_seq = batch['full_seq'].to(device)
+                pocket_seq = batch['poc_seq'].to(device)
+                smile_seq = batch['smile_seq'].to(device)
+                yh, protein_feats, seq_feats, compound_feats, smile_feats = model(xd, xp, protein_seq, pocket_seq, smile_seq)
+                yp = torch.cat([yp, yh.detach().cpu()], dim=0)
 
     yp = yp.view(-1).numpy()
     results = {
@@ -81,7 +82,8 @@ class DTAExperiment(object):
                           batch_size=self.batch_size,
                           collate_fn=dataset.collate,
                           shuffle=shuffle,
-                          drop_last=False)
+                          drop_last=False,
+                          num_workers=8)
 
     @property
     def task_data_df_split(self):
@@ -114,7 +116,6 @@ class DTAExperiment(object):
         results: dict with keys y_pred, y_true
         """
         df = self.task_df['test'].copy() if test_df is None else test_df.copy()
-        df.columns = ['zinc_id', 'smile', 'sequence', 'pocket', 'position']
         df['y_pred_avg'] = results['y_pred_avg']
         print(df)
 

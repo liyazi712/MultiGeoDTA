@@ -53,10 +53,12 @@ common error:
 
 Running the above lines of `conda install` should be sufficient to install all  MultiGeo-DTA's required packages (and their dependencies).
 ## Data availability
-1. Download example data (~120MB) from Dropbox.
+1. Download open source data from Hugging Face Dataset. (Because of the official website's limitation, PDBBind v2021 dataset will open source after the official website open source them)
     ```bash
-    wget https://www.dropbox.com/s/owc45bzbfn05ix4/data.tar.gz
-    tar -xf data.tar.gz
+    pip install -U huggingface_hub
+    export HF_ENDPOINT="https://hf-mirror.com"
+    cd create_dataset
+    huggingface-cli download laddymo/MultiGeoDTA --repo-type dataset --local-dir MultiGeoDTA --local-dir-use-symlinks False
     ```
 
 ## Test

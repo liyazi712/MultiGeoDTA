@@ -46,7 +46,7 @@ def _build_atom_feature(mol):
             Chem.AssignStereochemistry(mol, cleanIt=True, force=True)
         except:
             pass  # 如果无法赋值立体化学，跳过
-    # 扩展特征字典
+
     feature_alphabet = {
         'GetSymbol': (ATOM_VOCAB, 'unk'),  # 原子符号
         'GetDegree': ([0, 1, 2, 3, 4, 5, 6], 6),  # 原子度数
@@ -145,17 +145,6 @@ def _build_atom_feature(mol):
 
     atom_feature = atom_feature.astype(np.float32)
     return atom_feature
-
-# def _build_edge_feature(coords, edge_index, D_max=4.5, num_rbf=16):
-#     E_vectors = coords[edge_index[0]] - coords[edge_index[1]]
-#     rbf = _rbf(E_vectors.norm(dim=-1), D_max=D_max, D_count=num_rbf)
-#
-#     edge_s = rbf
-#     edge_v = _normalize(E_vectors).unsqueeze(-2)
-#
-#     edge_s, edge_v = map(torch.nan_to_num, (edge_s, edge_v))
-#
-#     return edge_s, edge_v
 
 def _build_edge_feature(mol, coords, edge_index, D_max=4.5, num_rbf=16):
     """

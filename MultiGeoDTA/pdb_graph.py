@@ -78,45 +78,20 @@ def featurize_protein_graph(
         knn_matrix = np.zeros_like(D_ca)
         tree = KDTree(D_ca)
         k = 3
-        # print("X_ca: ", X_ca.shape)
         for i in range(D_ca.shape[0]):
             distances, indices = tree.query(D_ca[i], k=k + 1)  # +1 包括自身
             knn_matrix[i, indices[1:]] = 1  # 排除自身
         knn_edge_index = torch.nonzero(torch.tensor(knn_matrix))
-        # print("knn_index: ", knn_edge_index.shape)
-        # print("before_edge_index: ", edge_index.shape)
         combined_edge_index = torch.cat((edge_index, knn_edge_index), dim=0)
-        # 去重，避免重复的边
         edge_index = torch.unique(combined_edge_index, dim=0)
-        # print("after_edge_index: ", edge_index.shape)
-
-
 
         edge_index = edge_index.t().contiguous()  # 转置并连续化边的索引
-        # O_feature = _local_frame(X_ca, edge_index)  # 计算局部坐标系特征
         pos_embeddings = _positional_embeddings(edge_index, num_embeddings=num_pos_emb)  # 计算位置嵌入特征
         E_vectors = X_ca[edge_index[0]] - X_ca[edge_index[1]]  # 计算边向量
         rbf = _rbf(E_vectors.norm(dim=-1), D_count=num_rbf)  # 计算径向基函数特征
-
         dihedrals = _dihedrals(coords)  # 计算二面角特征
         orientations = _orientations(X_ca)  # 计算主链方向特征
         sidechains = _sidechains(coords)  # 计算侧链特征
-
-        # node_s = dihedrals  # 节点的标量特征设置为二面角
-        # node_v = torch.cat([orientations, sidechains.unsqueeze(-2)], dim=-2)  # 节点的向量特征是方向和侧链特征的拼接
-        # edge_s = torch.cat([rbf, O_feature, pos_embeddings], dim=-1)  # 边的标量特征是RBF、局部坐标系和位置嵌入的拼接
-        # edge_v = _normalize(E_vectors).unsqueeze(-2)  # 边的向量特征是规范化的边向量
-
-        # print(coords.shape, dihedrals.shape, orientations.shape, sidechains.shape,
-        #       O_feature.shape, pos_embeddings.shape, E_vectors.shape, rbf.shape,)
-        # torch.Size([34, 4, 3]) # coords
-        # torch.Size([34, 6]) # dihedral
-        # torch.Size([34, 2, 3]) # orientation
-        # torch.Size([34, 3]) # sidechain
-        # torch.Size([315, 7]) # o_feature
-        # torch.Size([315, 16]) # pos_embedding
-        # torch.Size([315, 3]) # e_vector
-        # torch.Size([315, 16]) # rbf
         node_s = dihedrals  # 节点的标量特征设置为二面角
         node_v = torch.cat([orientations, sidechains.unsqueeze(-2)], dim=-2) # 节点的向量特征是方向和侧链特征的拼接
         edge_s = torch.cat([rbf, pos_embeddings], dim=-1)  # 边的标量特征是RBF、局部坐标系和位置嵌入的拼接
@@ -134,18 +109,7 @@ def featurize_protein_graph(
 
 
 def _dihedrals(X, eps=1e-7):
-    """
-    计算蛋白质主链的二面角特征。
-    eps 是一个小常数，用于避免在计算时取反余弦值时出现无效的数学运算。
-    """
-    """
-    这个函数首先重新排列输入坐标，然后计算相邻氨基酸残基之间的向量差分，并求得这些向量的规范化表示。
-    接着，通过叉乘计算两个相邻氨基酸残基的法向量，进而利用法向量的点积来求得二面角的余弦值。
-    之后，通过反余弦函数求得实际的二面角，并通过填充操作扩展角度特征，
-    最后将这些角度转换为周期性函数的表示形式，即cos和sin，以便于图神经网络处理。
-    """
     X = torch.reshape(X[:, :3], [3 * X.shape[0], 3])  # 重新排列坐标，使得每个氨基酸的三个主链原子（N, CA, C）连续排列
-    # print(X.shape)
     dX = X[1:] - X[:-1]  # 计算相邻氨基酸残基之间的原子向量差分
 
     U = _normalize(dX, dim=-1)  # 规范化差分向量，得到向量的方向
@@ -163,33 +127,15 @@ def _dihedrals(X, eps=1e-7):
 
     # 计算二面角，并将结果扩展为 [BATCH, 3] 形状，其中最后一位是0，用于后续填充
     D = torch.sign(torch.sum(u_2 * n_1, -1)) * torch.acos(cosD)
-    # print(D.shape)
     D = F.pad(D, [1, 2])  # 填充，使得D的形状变为 [BATCH, 5]，为每个氨基酸添加额外的二面角特征
     D = torch.reshape(D, [-1, 3])
 
     # 将二面角转换为周期性表示，即使用cos和sin表示
-    # print(D.shape)
     D_features = torch.cat([torch.cos(D), torch.sin(D)], 1)
     return D_features
 
 
-def _positional_embeddings(edge_index,
-                            num_embeddings=None,
-                            period_range=[2, 1000]):
-    """
-    生成位置嵌入特征。
-    edge_index 是图中边的索引。
-    num_embeddings 是要生成的位置嵌入的维度数。
-    period_range 是用于控制不同维度频率的最小和最大周期。
-
-    这个函数首先计算图中每条边的两个节点索引的差值，这个差值可以反映节点在序列中的距离。然后，
-    使用这个距离信息来计算不同维度的位置嵌入。具体来说，函数计算了一个频率向量，每个频率对应于位置嵌入中的一个维度，
-    频率从低到高排列。接着，将每个频率与边的位置差相乘，并计算得到的角的余弦和正弦值。最后，将余弦和正弦值合并为一个向量，
-    这个向量就是对应于每条边的位置嵌入。
-
-    这种位置嵌入方法允许模型学习到不同节点间的距离关系，并且能够在处理序列数据时保持不同位置之间的区分度。
-    在蛋白质结构分析中，这种编码方式可以帮助模型理解氨基酸残基在蛋白质序列中的相对位置，从而更好地捕捉蛋白质的三维结构特征。
-    """
+def _positional_embeddings(edge_index, num_embeddings=None):
     d = edge_index[0] - edge_index[1]  # 计算边的索引差，反映节点间的位置关系
     frequency = torch.exp(  # 计算不同维度的频率，从低频到高频
         torch.arange(0, num_embeddings, 2, dtype=torch.float32) * -(np.log(10000.0) / num_embeddings))
@@ -202,16 +148,6 @@ def _positional_embeddings(edge_index,
 
 
 def _orientations(X):
-    '''
-    这个函数首先计算了相邻氨基酸残基之间的向量，分别指向下一个残基（forward）和上一个残基（backward）。
-    这些向量是通过简单的坐标差值来计算的，并且使用 _normalize 函数进行规范化，以确保它们表示的是方向而不是长度。
-    接下来，使用 F.pad 对 forward 和 backward 向量进行填充，以确保它们的长度与原始的原子坐标张量 X 相同。
-    填充操作是在张量的开始和结束处添加零向量，这样每个氨基酸残基的前后向量就可以与它自己的坐标对应起来。
-    最后，使用 torch.cat 将 forward 和 backward 向量沿着一个新的维度（unsqueeze 操作创建这个维度）拼接起来。
-    这样，每个氨基酸残基的局部方向信息就被编码为一个形状为 (N, 2, 3) 的张量，其中 N 是残基的数量，
-    2 表示每个残基有两个方向向量（前向和后向），3 表示每个向量有三维空间中的 x, y, z 分量。
-    这种局部方向信息提供了关于蛋白质主链如何弯曲和折叠的空间信息，这有助于网络理解蛋白质的三维结构特征。
-    '''
     forward = _normalize(X[1:] - X[:-1])
     backward = _normalize(X[:-1] - X[1:])
     forward = F.pad(forward, [0, 0, 0, 1])
@@ -220,19 +156,6 @@ def _orientations(X):
 
 
 def _sidechains(X):
-    """
-    计算侧链的方向信息。
-    X 是一个形状为 (N, 3) 的张量，其中 N 是原子的数量，3 是每个原子的三维坐标。
-    这个函数假设 X 包含了每个氨基酸残基的 N (氮), CA (α-碳), C (碳) 原子的坐标。
-
-    这个函数首先从输入坐标张量 X 中提取每个氨基酸残基的 N（氮）、CA（α-碳）、C（碳）原子的坐标。
-    然后，计算从 CA 到 C 和从 CA 到 N 的向量，并规范化这些向量以得到方向信息。
-    接着，计算 N-CA-C 角的角平分线，即 N 和 C 向量的和的规范化向量。此外，通过叉乘 N 和 C 向量来计算垂直于这个平面的向量，并将结果规范化。
-    最后，通过特定的线性组合计算侧链方向向量。这个组合使用了角平分线向量和垂直向量，并且通过权重 -1/sqrt(3) 和 -sqrt(2/3)
-    来平衡它们对侧链方向的贡献。这产生了一个表示侧链方向的向量，可以认为是侧链可能伸展的平均方向。
-    得到的侧链方向向量 vec 反映了每个氨基酸残基侧链的空间取向，这对于蛋白质结构分析和理解蛋白质功能至关重要。
-    在图神经网络中使用这些信息可以帮助模型更准确地捕捉蛋白质的三维结构特征。
-    """
     n, origin, c = X[:, 0], X[:, 1], X[:, 2]  # 分别提取 N, CA, C 三个原子的坐标
     c, n = _normalize(c - origin), _normalize(n - origin)  # 计算从 CA 到 C 和从 CA 到 N 的规范化向量
     bisector = _normalize(c + n)  # 计算 N-CA-C 的角平分线（二分线）的规范化向量
@@ -256,12 +179,6 @@ def _rbf(D, D_min=0., D_max=20., D_count=16, device='cpu'):
     That is, if `D` has shape [...dims], then the returned tensor will have
     shape [...dims, D_count].
     '''
-    """
-    根据边的长度 D 计算径向基函数嵌入。D 是一个张量，包含边的长度。D_min 和 D_max 定义了距离嵌入的最大和最小值。
-    D_count 是生成的RBF嵌入的维度数。device 是张量所在的设备，'cpu' 或 'gpu'。
-    生成的RBF嵌入是一个 (D_count,) 形状的向量，为每条边提供了一个关于其长度的高维特征表示。
-    这种表示方式使得图神经网络能够更细致地处理节点间距离信息，捕捉到蛋白质结构中的细微差异。
-    """
     D_mu = torch.linspace(D_min, D_max, D_count, device=device)  # 在 D_min 和 D_max 之间均匀生成 D_count 个点
     D_mu = D_mu.view([1, -1])  # 将生成的点重新排布为一行
 
@@ -279,12 +196,6 @@ def _local_frame(X, edge_index, eps=1e-6):
     X 是包含原子坐标的张量。
     edge_index 定义了图中的边。
     eps 是一个小常数，用于数值稳定性。
-    """
-    """
-    这个函数首先计算了每条边的方向向量，并规范化这些向量以得到主链的方向。然后，通过叉乘计算出主链的法向量。
-    接着，使用这些向量来构建每个原子的局部坐标系。然后，计算了每条边在局部坐标系下的单位向量，
-    并通过旋转矩阵和四元数来描述原子间的相对旋转。最后，将局部坐标系下的方向和四元数特征合并，形成每条边的局部坐标系特征向量。
-    这些特征对于图神经网络来说非常重要，因为它们提供了原子间相对空间位置和旋转的信息，这有助于网络更好地理解蛋白质的三维结构。
     """
     dX = X[edge_index[1]] - X[edge_index[0]]  # 计算边的方向向量，从节点0到节点1
     U = _normalize(dX, dim=-1)  # 规范化方向向量，得到主链的方向
@@ -320,13 +231,6 @@ def _quaternions(R):
     """
     从旋转矩阵 R 计算四元数。
     R 是一个形状为 (B, 3, 3) 的张量，其中 B 是批次大小。
-
-    这个函数首先从旋转矩阵 R 中提取对角线元素，并分别解绑为三个独立的向量 Rxx, Ryy, Rzz。然后，
-    使用这些对角线元素计算四元数的 x, y, z 分量的幅度。接着，通过比较旋转矩阵中特定元素对的值来确定四元数分量的符号。
-    之后，计算四元数的 w 分量，这里使用 torch.sqrt 和 F.relu 来确保 w 的值是非负的。将 x, y, z, w 分量合并为一个四元素的向量 Q，
-    最后通过 F.normalize 对四元数进行规范化，确保它的长度为 1，这是四元数的一个基本性质。
-    规范化的四元数可以用于表示三维空间中的旋转，并且在物理和计算机图形学中广泛应用。
-    在生物分子结构分析中，四元数可以用来描述氨基酸残基之间的相对旋转。
     """
     diag = torch.diagonal(R, dim1=-2, dim2=-1)  # 从旋转矩阵中提取对角线元素
     Rxx, Ryy, Rzz = diag.unbind(-1)  # 对角线元素分别解绑为三个独立的向量

@@ -64,6 +64,6 @@ def add_train_args(parser):
     parser.add_argument('--save_prediction', action='store_true', default=True, help='save prediction')
 
     # test parameters
-    parser.add_argument('--model_file', action='store', default=False, help='test model file dir')
+    parser.add_argument('--model_file', action='store', default=False, help='trained model file dir for test')
 
 

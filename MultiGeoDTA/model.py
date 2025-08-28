@@ -1,12 +1,8 @@
 import torch
 import torch.nn as nn
-import torch_geometric
 from MultiGeoDTA.gvp import GVP, GVPConvLayer, LayerNorm
 import torch.nn.functional as F
-from .RetNet import RetNet
 from mamba_ssm import Mamba2
-from .transformer import TransformerEnc
-import numpy as np
 
 
 class ProtGVPModel(nn.Module):
@@ -47,12 +43,8 @@ class ProtGVPModel(nn.Module):
             GVP(node_h_dim, (ns, 0)))
 
     def pyg_split(self, batched_data, feats):
-        # print(batched_data)
-        # print(batched_data.batch)
         device = feats.device
-        # ptr 属性定义了每个图的边索引在批次中的起始位置，图的个数等于 ptr 张量的长度减1
         batch_size = batched_data.ptr.size(0) - 1
-        # 获取 batch 属性，这个属性记录了每个节点所属图的索引
         node_to_graph_idx = batched_data.batch
         num_nodes_per_graph = torch.bincount(node_to_graph_idx)
         max_num_nodes = int(num_nodes_per_graph.max())
@@ -71,12 +63,8 @@ class ProtGVPModel(nn.Module):
     def forward(self, xp):
         # Unpack input data
         h_V = (xp.node_s, xp.node_v)
-        # print(xp.node_s.shape, xp.node_v.shape, xp.edge_s.shape, xp.edge_v.shape)
-        # print(xp)
         h_E = (xp.edge_s, xp.edge_v)
         edge_index = xp.edge_index
-        protein_seq = xp.seq
-        batch = xp.batch
 
         h_V = self.W_v(h_V)
         h_E = self.W_e(h_E)
@@ -138,9 +126,7 @@ class DrugGVPModel(nn.Module):
         # print(batched_data)
         # print(batched_data.batch)
         device = feats.device
-        # ptr 属性定义了每个图的边索引在批次中的起始位置，图的个数等于 ptr 张量的长度减1
         batch_size = batched_data.ptr.size(0) - 1
-        # 获取 batch 属性，这个属性记录了每个节点所属图的索引
         node_to_graph_idx = batched_data.batch
         num_nodes_per_graph = torch.bincount(node_to_graph_idx)
         max_num_nodes = int(num_nodes_per_graph.max())
@@ -192,7 +178,6 @@ class ConvEmbedding(nn.Module):
         self.num_filters = sum([f[1] for f in conv_filters])
         self.projection = nn.Linear(self.num_filters, output_dim)
 
-
     def forward(self, inputs):
         # embeds = self.embed(inputs)
         embeds = self.embed(inputs).transpose(-1,-2) # (batch_size, embedding_size, seq_len)
@@ -213,39 +198,19 @@ class Seq_Encoder(nn.Module):
                                      conv_filters=conv_filters, output_dim=embedding_dim, type='seq')
         self.poc_emb = ConvEmbedding(vocab_size=27, embedding_size=embedding_dim,
                                      conv_filters=conv_filters, output_dim=embedding_dim, type='poc')
-
         self.mamba2_glo = Mamba2(d_model=embedding_dim, d_state=64, d_conv=4, expand=2) # 256, 64 （128，64）, 4 (2～4), 2
         self.mamba2_loc = Mamba2(d_model=embedding_dim, d_state=64, d_conv=4, expand=2)
-
-        # self.mamba2_glo = RetNet(layers=1, hidden_dim=embedding_dim, ffn_size=embedding_dim // 2, heads=8, double_v_dim=False)
-        # self.mamba2_loc = RetNet(layers=1, hidden_dim=embedding_dim, ffn_size=embedding_dim // 2, heads=8, double_v_dim=False)
-
-        # self.mamba2_glo = TransformerEnc(d_model=embedding_dim)
-        # self.mamba2_loc = TransformerEnc(d_model=embedding_dim)
-
-        # self.mamba2 = Mamba2(d_model=embedding_dim, d_state=64, d_conv=4, expand=2)
-        # self.retnet = RetNet(layers=1, hidden_dim=embedding_dim, ffn_size=embedding_dim // 2, heads=8, double_v_dim=False)
-        # self.transformer = TransformerEnc(d_model=embedding_dim)
-
-        self.linear = nn.Linear(embedding_dim * 2, embedding_dim // 2) # embedding_dim // 2 确保了除法操作的结果是一个整数
-        # self.linear = nn.Linear(embedding_dim, embedding_dim // 2)  # embedding_dim // 2 确保了除法操作的结果是一个整数
+        self.linear = nn.Linear(embedding_dim * 2, embedding_dim // 2)
 
     def forward(self, seq_input, poc_input):
         global_emb = self.seq_emb(seq_input) # (128, 1024, 256)
-
         global_feats = self.mamba2_glo(F.relu(global_emb))  # (128, 1024, 256)
-        # global_feats = self.transformer(F.relu(global_emb))
-        # global_feats = self.retnet(F.relu(global_emb)) # (128, 1024, 256)
 
         local_emb = self.poc_emb(poc_input) # (128, 1024, 256)
-        #
         local_feats = self.mamba2_loc(F.relu(local_emb))  # (128, 1024, 256)
-        # local_feats = self.retnet(F.relu(local_emb)) # (128, 1024, 256)
-        # local_feats = self.transformer(F.relu(local_emb)) # (128, 1024, 256)
 
         output = torch.cat((global_feats, local_feats), dim=-1) # (128, 1024, 512)
         output = F.relu(self.linear(output)) # (128, 1024, 128)
-        # output = self.linear(output)
         return output
 
 
@@ -257,21 +222,11 @@ class Smile_Encoder(nn.Module):
 
         self.mamba2 = Mamba2(d_model=embedding_dim, d_state=64, d_conv=4, expand=2) # 256, 64 （128，64）, 4 (2～4), 2
         # d_model * expand / hidden_dim(default=64) == 8
-
-        # self.retnet = RetNet(layers=1, hidden_dim=embedding_dim, ffn_size=embedding_dim // 2, heads=8,
-        #                      double_v_dim=False)
-        # self.transformer = TransformerEnc(d_model=embedding_dim)
-
-        self.linear = nn.Linear(embedding_dim, embedding_dim // 2)  # embedding_dim // 2 确保了除法操作的结果是一个整数
+        self.linear = nn.Linear(embedding_dim, embedding_dim // 2)
 
     def forward(self, smile_input):
         emb = self.seq_emb(smile_input) # (128, 1024, 256)
-
         feats = self.mamba2(F.relu(emb))  # (128, 1024, 256)
-        # feats = self.transformer(F.relu(emb)) # (128, 1024, 256)
-        # feats = self.retnet(F.relu(emb)) # (128, 1024, 256)
-
-        # output = self.linear(feats) # (128, 1024, 128)
         output = F.relu(self.linear(feats))
         return output
 
@@ -299,7 +254,6 @@ class DTAModel(nn.Module):
 
         hidden_dim = prot_node_h_dims[0]
         self.seq_encoder = Seq_Encoder(embedding_dim=256)  # 256
-
         self.smile_encoder = Smile_Encoder(embedding_dim=256)
 
         # 128*3, 1024, 512, 1
@@ -311,7 +265,6 @@ class DTAModel(nn.Module):
     def get_fc_layers(self, hidden_sizes,
                       dropout=0, batchnorm=False,
                       no_last_dropout=True, no_last_activation=True):
-        # act_fn = torch.nn.LeakyReLU()
         act_fn = torch.nn.ReLU()
         layers = []
         for i, (in_dim, out_dim) in enumerate(zip(hidden_sizes[:-1], hidden_sizes[1:])):
@@ -328,15 +281,13 @@ class DTAModel(nn.Module):
 
     def forward(self, xd, xp, protein_seq, pocket_seq, smile_seq):
 
-        compound_feats = torch.mean(self.drug_GVP(xd), dim=1) # [batch_size, hidden_dim] (128, 128)
         protein_feats = torch.mean(self.prot_GVP(xp), dim=1) # [batch_size, hidden_dim] (128, 128)
         seq_feats = torch.mean(self.seq_encoder(protein_seq, pocket_seq), dim=1) # [batch_size, hidden_dim] (128, 128)
-        smile_feats = torch.mean(self.smile_encoder(smile_seq), dim=1)
+        compound_feats = torch.mean(self.drug_GVP(xd), dim=1)  # [batch_size, hidden_dim] (128, 128)
+        smile_feats = torch.mean(self.smile_encoder(smile_seq), dim=1) # [batch_size, hidden_dim] (128, 128)
 
-        # print(compound_feats.shape, protein_feats.shape, seq_feats.shape)
-
-        combined_feats = torch.cat([compound_feats, protein_feats, seq_feats, smile_feats], dim=-1)
+        combined_feats = torch.cat([protein_feats, seq_feats, compound_feats, smile_feats], dim=-1)
         x = self.mlp(combined_feats)
 
-        return x, compound_feats, protein_feats, seq_feats, smile_feats
+        return x, protein_feats, seq_feats, compound_feats, smile_feats
 
