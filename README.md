@@ -1,4 +1,4 @@
-# MultiGeo-DTA
+# MultiGeo-DTA（There is a more standard code writen by claude code. If you feel confuse about the original code, you can see multigeodta_cc_fixed.）
 - [MultiGeo-DTA](#MultiGeo-DTA)
   - [Overview](#overview)
   - [Installation Guide](#Installation-Guide)
