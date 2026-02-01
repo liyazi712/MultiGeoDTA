@@ -1,0 +1,37 @@
+# MultiGeoDTA Requirements
+# Python >= 3.8
+
+# Deep Learning Frameworks
+torch>=2.0.0
+torch_geometric>=2.3.0
+torch_scatter>=2.1.0
+torch_sparse>=0.6.0
+torch_cluster>=1.6.0
+
+# Graph Libraries
+dgl>=1.0.0
+
+# Scientific Computing
+numpy>=1.20.0
+scipy>=1.7.0
+pandas>=1.3.0
+scikit-learn>=1.0.0
+
+# Chemistry
+rdkit>=2022.9.1
+
+# State Space Models (optional, but recommended)
+mamba_ssm>=2.0.0
+causal_conv1d>=1.1.0
+
+# Utilities
+tqdm>=4.62.0
+pyyaml>=6.0
+joblib>=1.1.0
+
+# Logging
+tensorboard>=2.10.0
+
+# Testing (optional)
+pytest>=7.0.0
+pytest-cov>=4.0.0

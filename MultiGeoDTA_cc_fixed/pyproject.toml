@@ -1,0 +1,115 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "multigeodta"
+version = "1.0.0"
+authors = [
+    {name = "Yazi Li", email = "liyazi126@126.com"},
+]
+description = "Multi-modal Geometric Drug-Target Affinity Prediction"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.8"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Topic :: Scientific/Engineering :: Chemistry",
+]
+keywords = [
+    "drug-discovery",
+    "drug-target-interaction",
+    "binding-affinity",
+    "deep-learning",
+    "graph-neural-network",
+    "geometric-deep-learning",
+]
+dependencies = [
+    "torch>=2.0.0",
+    "torch_geometric>=2.3.0",
+    "numpy>=1.20.0",
+    "scipy>=1.7.0",
+    "pandas>=1.3.0",
+    "scikit-learn>=1.0.0",
+    "rdkit>=2022.9.1",
+    "tqdm>=4.62.0",
+    "pyyaml>=6.0",
+    "joblib>=1.1.0",
+]
+
+[project.optional-dependencies]
+mamba = [
+    "mamba_ssm>=2.0.0",
+    "causal_conv1d>=1.1.0",
+]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=22.0.0",
+    "isort>=5.0.0",
+    "flake8>=5.0.0",
+]
+docs = [
+    "sphinx>=5.0.0",
+    "sphinx-rtd-theme>=1.0.0",
+    "myst-parser>=0.18.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/yourusername/MultiGeoDTA"
+Documentation = "https://github.com/yourusername/MultiGeoDTA#readme"
+Repository = "https://github.com/yourusername/MultiGeoDTA.git"
+Issues = "https://github.com/yourusername/MultiGeoDTA/issues"
+
+[project.scripts]
+multigeodta-train = "scripts.train:main"
+multigeodta-test = "scripts.test:main"
+multigeodta-inference = "scripts.inference:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["multigeodta*"]
+exclude = ["tests*", "docs*", "examples*"]
+
+[tool.black]
+line-length = 100
+target-version = ['py38', 'py39', 'py310', 'py311']
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | _build
+  | buck-out
+  | build
+  | dist
+)/
+'''
+
+[tool.isort]
+profile = "black"
+line_length = 100
+multi_line_output = 3
+include_trailing_comma = true
+force_grid_wrap = 0
+use_parentheses = true
+ensure_newline_before_comments = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v --cov=multigeodta --cov-report=term-missing"
