@@ -48,7 +48,7 @@ MultiGeoDTA combines multiple modalities for accurate binding affinity predictio
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-## Installation
+## Installation(docs/INSTALL.md is all you need! It's the easiest way to build the virtual environment.)
 
 ### Prerequisites
 
