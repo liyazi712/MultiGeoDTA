@@ -1,0 +1,40 @@
+# Global defaults for MultiGeo-DTA training and evaluation
+
+task: pdbbind_v2016
+seed: 42
+
+# Graph featurization
+contact_cutoff: 8.0
+num_pos_emb: 16
+num_rbf: 16
+
+# Model
+mlp_dims: [1024, 512]
+mlp_dropout: 0.25
+
+# Training
+n_ensembles: 5
+batch_size: 128
+n_epochs: 100
+patience: 20
+eval_freq: 1
+lr: 0.0001
+monitor_metric: mse
+parallel: false
+device: 0
+
+# Split (pdbbind_v2021_similarity only)
+split_method: new_new
+thre: "0.5"
+
+# Robustness (pdbbind_v2016_robustness only)
+# variant: noised_scale_0.2   # or missing_0.2, noised_scale_1.0, etc.
+
+# Paths (override via env MULTIGEODTA_DATA_DIR / MULTIGEODTA_OUTPUT_DIR)
+output_dir: outputs
+model_file: null
+
+# Saving
+save_log: true
+save_checkpoint: true
+save_prediction: true

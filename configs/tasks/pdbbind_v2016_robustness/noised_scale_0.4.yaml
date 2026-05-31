@@ -1,0 +1,3 @@
+task: pdbbind_v2016_robustness
+variant: noised_scale_0.4
+output_dir: outputs/pdbbind_v2016_robustness/noised_scale_0.4

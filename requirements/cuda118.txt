@@ -1,0 +1,23 @@
+# CUDA 11.8 + PyTorch 2.1 stack for MultiGeo-DTA
+# Recommended: bash scripts/install.sh  (handles order + mamba wheels)
+
+-r base.txt
+
+# Step 1 — PyTorch (must match DGL / PyG / mamba wheels)
+# pip install torch==2.1.0 --index-url https://download.pytorch.org/whl/cu118
+
+# Step 2 — PyG extensions (after torch)
+# pip install torch-scatter torch-sparse torch-cluster torch-spline-conv \
+#   -f https://data.pyg.org/whl/torch-2.1.0+cu118.html
+
+# Step 3 — DGL
+# pip install dgl -f https://data.dgl.ai/wheels/torch-2.1/cu118/repo.html
+
+# Step 4 — mamba (download wheels, do NOT pip install from PyPI)
+# https://github.com/Dao-AILab/causal-conv1d/releases/tag/v1.4.0
+# https://github.com/state-spaces/mamba/releases/tag/v2.2.2
+# causal_conv1d-1.4.0+cu118torch2.1cxx11abiFALSE-cp38-cp38-linux_x86_64.whl
+# mamba_ssm-2.2.2+cu118torch2.1cxx11abiFALSE-cp38-cp38-linux_x86_64.whl
+
+rdkit
+torch-geometric

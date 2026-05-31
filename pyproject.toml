@@ -1,0 +1,69 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "multigeodta"
+version = "1.0.0"
+description = "MultiGeo-DTA: multimodal structure-sequence binding affinity prediction"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.8,<3.9"
+authors = [{ name = "Yazi Li", email = "liyazi126@126.com" }]
+keywords = ["drug-target", "binding-affinity", "graph-neural-network", "GVP", "mamba"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Chemistry",
+]
+dependencies = [
+    "numpy>=1.21",
+    "pandas>=1.3",
+    "scipy>=1.7",
+    "scikit-learn>=1.0",
+    "pyyaml>=5.4",
+    "joblib>=1.1",
+    "tqdm>=4.62",
+    "rdkit-pypi>=2022.9.5; platform_system!='Linux'",
+    "rdkit>=2022.9.5; platform_system=='Linux'",
+    "torch-geometric>=2.4",
+    "torch-scatter>=2.1",
+    "torch-sparse>=0.6",
+    "torch-cluster>=1.6",
+    "torch-spline-conv>=1.2",
+    "biopython>=1.79",
+]
+
+[project.optional-dependencies]
+cuda118 = [
+    "torch==2.1.0",
+    "dgl",
+    "mamba-ssm>=2.2.2",
+    "causal-conv1d>=1.4.0",
+]
+dev = [
+    "pytest>=7.0",
+    "ruff>=0.1",
+]
+
+[project.scripts]
+multigeodta = "multigeodta.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/liyazi712/MultiGeo-DTA"
+Repository = "https://github.com/liyazi712/MultiGeo-DTA"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+multigeodta = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py38"

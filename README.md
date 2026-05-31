@@ -1,147 +1,199 @@
-# MultiGeo-DTA（There is a more standard code writen by claude code. If you feel confuse about the original code, you can see multigeodta_cc_fixed.）
-- [MultiGeo-DTA](#MultiGeo-DTA)
-  - [Overview](#overview)
-  - [Installation Guide](#Installation-Guide)
-  - [Dependencies](#dependencies)
-  - [Data availability](#Data-availability)
-  - [Test](#Test)
-  - [Train from scratch](#Train-from-scratch)
-  - [Other usages](#other-usages)
-  - [Contact](#contact)
+# MultiGeo-DTA: Multi-modal Geometric Deep Learning Enables Drug-Target Affinity Prediction with Robustness and Generalization
 
-## Overview
-MultiGeo-DTA is a multimodal neural network that integrates structure and sequence information to predict compound–protein binding affinity.
+MultiGeoDTA is a ***multimodal neural network*** that integrates protein pocket 3D structure, drug 3D structure, protein full sequence, protein pocket sequence, and drug SMILES sequence information to predict drug-target affinity.
 
-## Installation Guide
+![MultiGeoDTA architecture](assets/MultiGeoDTA.png)
+
+## Project layout
+
+```
+MultiGeoDTA/
+├── assets/                      # Figures (e.g. MultiGeoDTA.png)
+├── src/multigeodta/             # Installable package
+│   ├── cli.py                   # Unified CLI (train / evaluate / screen)
+│   ├── config/                  # YAML loading
+│   ├── data/                    # Datasets, featurizers, task registry
+│   ├── models/                  # DTA model & GVP
+│   ├── training/                # Trainer & experiment loop
+│   ├── inference/               # Virtual screening
+│   ├── metrics/                 # Regression metrics
+│   └── utils/
+├── configs/
+│   ├── base.yaml
+│   └── tasks/                   # Per-benchmark YAML (+ pdbbind_v2016_robustness/)
+├── scripts/
+│   ├── install.sh               # Environment setup
+│   ├── download_data.sh         # Hugging Face dataset download
+│   ├── build_zinc_vs_dataset.sh # ZINC virtual-screening prep
+│   ├── dataset/                 # Raw PDBBind preprocessing
+│   ├── virtual_screening/
+│   │   └── docking/             # Molecular docking demo
+│   └── lib/
+├── requirements/                # base.txt, cuda118.txt
+├── data/                        # Downloaded datasets (gitignored)
+├── outputs/                     # Checkpoints & logs (gitignored)
+├── run_MultiGeoDTA.py           # Legacy shim → multigeodta train/evaluate
+├── run_vs.py                    # Legacy shim → multigeodta screen
+├── test_MultiGeoDTA.py          # Legacy test entry
+├── pyproject.toml
+└── environment.yml
+```
+
+## Quick install
+
+**Recommended** — one script installs PyTorch 2.1 + cu118, DGL, PyG, and mamba wheels in the correct order:
+
 ```bash
-git clone https://github.com/liyazi712/MultiGeo-DTA.git
-cd MultiGeo-DTA
+cd /path/to/MultiGeoDTA
+bash scripts/install.sh
+conda activate multigeodta
+export MULTIGEODTA_DATA_DIR=/path/to/MultiGeoDTA/data
 ```
-## Dependencies
-This package is tested with Python 3.8 and CUDA 11.8 on Ubuntu 20.04, with access to an Nvidia V100 GPU (32GB RAM), AMD EPYC 7443 CPU (2.85 GHz), and 512G RAM. Run the following to create a conda environment and install the required Python packages (modify `pytorch-cuda=11.8` according to your CUDA version). 
+
+Other CUDA / PyTorch versions: pick matching wheels from:
+
+- https://github.com/state-spaces/mamba/releases
+- https://github.com/Dao-AILab/causal-conv1d/releases
+
+## Data
+
 ```bash
-conda create -n MultiGeo-DTA python=3.8
-conda activate MultiGeo-DTA
-
-# (pip or conda, select one)
-conda install pytorch==2.1.0 pytorch-cuda=11.8 -c pytorch -c nvidia
-pip install torch==2.1.0 --index-url https://download.pytorch.org/whl/cu118
-
-conda install -c dglteam/label/th21_cu118 dgl
-
-pip install pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_conv -f https://data.pyg.org/whl/torch-2.1.0+cu118.html
-pip install dgl -f https://data.dgl.ai/wheels/torch-2.1/cu118/repo.html
-pip install rdkit pyyaml scikit-learn torch_geometric pandas joblib
-pip install causal_conv1d-1.4.0
-pip install mamba_ssm-2.2.2
+export HF_ENDPOINT=https://hf-mirror.com
+bash scripts/download_datasets_and_model_weights.sh
+export MULTIGEODTA_DATA_DIR=/path/to/MultiGeoDTA/data
 ```
-Install causal_conv1d and mamba_ssm may has error, then you can download the .whl files and install as following：
+
+## Gold Standard Benchmark Results
+### PDBBind v2016
+![Benchmark_PDBBind_v2016](assets/Benchmark_PDBBind_v2016.png)
+
+### PDBBind v2020
+![Benchmark_PDBBind_v2020](assets/Benchmark_PDBBind_v2020.png)
+
+## Usage
+
+All commands use the unified CLI (`python -m multigeodta`). Each benchmark has a YAML under `configs/tasks/`; override hyperparameters via CLI flags when needed.
+
+### PDBBind v2016
+
 ```bash
-pip install causal_conv1d-1.4.0+cu118torch2.1cxx11abiFALSE-cp38-cp38-linux_x86_64.whl
-pip install mamba_ssm-2.2.2+cu118torch2.1cxx11abiFALSE-cp38-cp38-linux_x86_64.whl
+# Train
+python -m multigeodta train --config configs/tasks/pdbbind_v2016.yaml
+
+# Evaluate
+python -m multigeodta evaluate --config configs/tasks/pdbbind_v2016.yaml \
+  --model_file pdbbind_v2016 --output_dir outputs/pdbbind_v2016
 ```
 
-The example provides versions of causal_conv1d and mamba_ssm compatible with PyTorch 2.1.0 (CUDA 11.8) and Python 3.8.
-If your setup differs, ensure PyTorch, PyTorch Geometric, and DGL versions are aligned. For other versions, 
-download causal_conv1d and mamba_ssm from their respective GitHub releases:
-- mamba_ssm: [https://github.com/state-spaces/mamba/releases](https://github.com/state-spaces/mamba/releases)
-- causal_conv1d: [https://github.com/Dao-AILab/causal-conv1d/releases](https://github.com/Dao-AILab/causal-conv1d/releases)
+### PDBBind v2020
 
-common error: 
-1. OSError:  libcusparse.so.11: cannot open shared object file: No such file or directory
-2. solution:  conda install -c nvidia cudatoolkit=11.8
+```bash
+# Train
+python -m multigeodta train --config configs/tasks/pdbbind_v2020.yaml
 
-Running the above lines of `conda install` should be sufficient to install all  MultiGeo-DTA's required packages (and their dependencies).
-## Data availability
-1. Download open source data from Hugging Face Dataset. (Because of the official website's limitation, PDBBind v2021 dataset will open source after the official website open source them)
-    ```bash
-    pip install -U huggingface_hub
-    export HF_ENDPOINT="https://hf-mirror.com"
-    cd create_dataset
-    huggingface-cli download laddymo/MultiGeoDTA --repo-type dataset --local-dir MultiGeoDTA --local-dir-use-symlinks False
-    ```
-
-## Test
-1. PDBBind_v2016
-```
-python test_MultiGeoDTA.py --task pdbbind_v2016 --output_dir ./MultiGeoDTA/output/pdbbind_v2016 --model_file pdbbind_v2016
+# Evaluate
+python -m multigeodta evaluate --config configs/tasks/pdbbind_v2020.yaml \
+  --model_file pdbbind_v2020 --output_dir outputs/pdbbind_v2020
 ```
 
-2. PDBBind_v2020
-```
-python test_MultiGeoDTA.py --task pdbbind_v2020 --output_dir ./MultiGeoDTA/output/pdbbind_v2020 --model_file pdbbind_v2020
+### PDBBind v2021 (similarity split)
+
+Similarity-based splits with ligand/protein novelty settings (`new_compound`, `new_protein`, `new_new`) and Tanimoto thresholds (`0.3`–`0.6`). Default config uses `new_new` at threshold `0.5`.
+
+```bash
+# Train (default: new_new / 0.5)
+python -m multigeodta train --config configs/tasks/pdbbind_v2021_similarity.yaml
+
+# Train another split
+python -m multigeodta train --task pdbbind_v2021_similarity \
+  --split_method new_protein --thre 0.4 \
+  --output_dir outputs/pdbbind_v2021_similarity/new_protein/0.4
+
+# Evaluate
+python -m multigeodta evaluate --config configs/tasks/pdbbind_v2021_similarity.yaml \
+  --model_file pdbbind_v2021_similarity/new_new/0.5 \
+  --output_dir outputs/pdbbind_v2021_similarity/new_new/0.5
 ```
 
-3. PDBBind_v2021_time
-```
-python test_MultiGeoDTA.py --task pdbbind_v2021_time --output_dir ./MultiGeoDTA/output/pdbbind_v2021_time --model_file pdbbind_v2021_time
+### PDBBind v2021 (time split)
+
+```bash
+# Train
+python -m multigeodta train --config configs/tasks/pdbbind_v2021_time.yaml
+
+# Evaluate
+python -m multigeodta evaluate --config configs/tasks/pdbbind_v2021_time.yaml \
+  --model_file pdbbind_v2021_time --output_dir outputs/pdbbind_v2021_time
 ```
 
-4. PDBBind_v2021_similarity
-```
-python test_MultiGeoDTA.py --task pdbbind_v2021_similarity --output_dir ./MultiGeoDTA/output/pdbbind_v2021_similarity/new_new/0.5 --model_file pdbbind_v2021_similarity/new_new/0.5 --split_method new_new --thre 0.5 
+### LP-PDBBind
+
+```bash
+# Train
+python -m multigeodta train --config configs/tasks/lp_pdbbind.yaml
+
+# Evaluate
+python -m multigeodta evaluate --config configs/tasks/lp_pdbbind.yaml \
+  --model_file lp_pdbbind --output_dir outputs/lp_pdbbind
 ```
 
-5. LP-PDBBind
-```
-python test_MultiGeoDTA.py --task lp_pdbbind --output_dir ./MultiGeoDTA/output/lp_pdbbind --model_file lp_pdbbind
+### PDBBind v2016 robustness benchmark
+
+Robustness CSVs live under `data/pdbbind_v2016/pdbbind_v2016_robustness_test/`.  
+Only the **training set** is perturbed; **validation and test** use the standard PDBBind v2016 splits.
+
+| Type | Variants | Description |
+|------|----------|-------------|
+| Missing samples | `missing_0.2` … `missing_0.8` | Randomly drop 20%–80% of training rows |
+| Label noise | `noised_scale_0.2` … `noised_scale_1.0` | Add Gaussian noise: `label + scale × N(0,1)` |
+
+See [`data/pdbbind_v2016/pdbbind_v2016_robustness_test/README.md`](data/pdbbind_v2016/pdbbind_v2016_robustness_test/README.md) for file details and regeneration scripts.
+
+```bash
+# Train one variant (YAML per variant under configs/tasks/pdbbind_v2016_robustness/)
+python -m multigeodta train \
+  --config configs/tasks/pdbbind_v2016_robustness/noised_scale_0.4.yaml
+
+# Or
+python -m multigeodta train --task pdbbind_v2016_robustness \
+  --variant missing_0.6 \
+  --output_dir outputs/pdbbind_v2016_robustness/missing_0.6
+
+# Evaluate
+python -m multigeodta evaluate \
+  --config configs/tasks/pdbbind_v2016_robustness/noised_scale_0.4.yaml \
+  --model_file pdbbind_v2016_robustness/noised_scale_0.4 \
+  --output_dir outputs/pdbbind_v2016_robustness/noised_scale_0.4
+
+# Run all 9 variants
+for cfg in configs/tasks/pdbbind_v2016_robustness/*.yaml; do
+  python -m multigeodta train --config "$cfg"
+done
 ```
 
-5. ZINC(virtual screening)
-```
-python run_vs.py --output_dir ./MultiGeoDTA/output/zinc --model_file pdbbind_v2020 --device 0
+### Virtual Screening
+
+Screen ZINC compounds against a target (protein sequence + pocket positions). Default config uses a CB1R example and checkpoints trained on PDBBind v2020.
+
+```bash
+# Screen
+python -m multigeodta screen --config configs/tasks/zinc_vs.yaml \
+  --model_file pdbbind_v2020 --output_dir outputs/zinc --device 0
 ```
 
-note: split_method: new_new, new_compound, new_protein; thre: 0.3, 0.4, 0.5, 0.6, modify output_dir and model_file according to split_method and thre)
+See [`data/zinc/README.md`](data/zinc/README.md) for the full ZINC download, preprocessing, and new-target workflow. One-command build: `bash scripts/build_zinc_vs_dataset.sh`.
 
-## Train from scratch
-1. PDBBind_v2016
-```
-python run_MultiGeoDTA.py --task pdbbind_v2016 --output_dir ./MultiGeoDTA/output/pdbbind_v2016
-```
+### Environment variables
 
-2. PDBBind_v2020
-```
-python run_MultiGeoDTA.py --task pdbbind_v2020 --output_dir ./MultiGeoDTA/output/pdbbind_v2020
-```
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MULTIGEODTA_DATA_DIR` | `./data` or `./create_dataset` | Dataset root |
+| `MULTIGEODTA_OUTPUT_DIR` | `./outputs` | Checkpoints & logs |
 
-3. PDBBind_v2021_time
-```
-python run_MultiGeoDTA.py --task pdbbind_v2021_time --output_dir ./MultiGeoDTA/output/pdbbind_v2021_time
-```
+## Citation
 
-4. PDBBind_v2021_similarity
-```
-python run_MultiGeoDTA.py --task pdbbind_v2021_similarity --output_dir ./MultiGeoDTA/output/pdbbind_v2021_similarity/new_new/0.5 --split_method new_new --thre 0.5
-```
-note: split_method: new_new, new_compound, new_protein; thre: 0.3, 0.4, 0.5, 0.6, modify output_dir and model_file according to split_method and thre)
-
-5. LP-PDBBind
-```
-python run_MultiGeoDTA.py --task lp_pdbbind --output_dir ./MultiGeoDTA/output/lp_pdbbind
-```
-
-## Other usages
-1. missing_dataset. 
-    train:
-    ```
-    python run_MultiGeoDTA.py --task pdbbind_v2016 --output_dir ./MultiGeoDTA/output/pdbbind_v2016_robustness/missing_0.2
-    ```
-    test:
-    ```
-    python test_MultiGeoDTA.py --task pdbbind_v2016 --output_dir ./MultiGeoDTA/output/pdbbind_v2016_robustness/missing_0.2 --model_file pdbbind_v2016_robustness/missing_0.2
-    ```
-
-2. noise_label. 
-    train:
-    ```
-    python run_MultiGeoDTA.py --task pdbbind_v2016 --output_dir ./MultiGeoDTA/output/pdbbind_v2016_robustness/noise_0.2
-    ```
-    test:
-    ```
-    python test_MultiGeoDTA.py --task pdbbind_v2016 --output_dir ./MultiGeoDTA/output/pdbbind_v2016_robustness/noise_0.2 --model_file pdbbind_v2016_robustness/noise_0.2
-    ```
+If you use this code, please cite the MultiGeo-DTA paper and contact Yazi Li (liyazi126@126.com) for questions.
 
 ## Contact
-Please submit GitHub issues or contact Yazi Li (liyazi126@126.com) for any questions related to the source code.
 
+GitHub issues or liyazi126@126.com
