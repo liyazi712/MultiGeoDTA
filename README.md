@@ -4,7 +4,7 @@ MultiGeoDTA is a ***multimodal neural network*** that integrates protein pocket 
 
 ![MultiGeoDTA architecture](assets/MultiGeoDTA.png)
 
-## Project layout
+## 1. Project layout
 
 ```
 MultiGeoDTA/
@@ -32,22 +32,18 @@ MultiGeoDTA/
 ├── requirements/                # base.txt, cuda118.txt
 ├── data/                        # Downloaded datasets (gitignored)
 ├── outputs/                     # Checkpoints & logs (gitignored)
-├── run_MultiGeoDTA.py           # Legacy shim → multigeodta train/evaluate
-├── run_vs.py                    # Legacy shim → multigeodta screen
-├── test_MultiGeoDTA.py          # Legacy test entry
 ├── pyproject.toml
 └── environment.yml
 ```
 
-## Quick install
+## 2. Quick install
 
 **Recommended** — one script installs PyTorch 2.1 + cu118, DGL, PyG, and mamba wheels in the correct order:
 
 ```bash
-cd /path/to/MultiGeoDTA
+cd MultiGeoDTA
 bash scripts/install.sh
 conda activate multigeodta
-export MULTIGEODTA_DATA_DIR=/path/to/MultiGeoDTA/data
 ```
 
 Other CUDA / PyTorch versions: pick matching wheels from:
@@ -55,7 +51,7 @@ Other CUDA / PyTorch versions: pick matching wheels from:
 - https://github.com/state-spaces/mamba/releases
 - https://github.com/Dao-AILab/causal-conv1d/releases
 
-## Data
+## 3. Download preprocessed data and trained model weights
 
 ```bash
 export HF_ENDPOINT=https://hf-mirror.com
@@ -63,14 +59,30 @@ bash scripts/download_datasets_and_model_weights.sh
 export MULTIGEODTA_DATA_DIR=/path/to/MultiGeoDTA/data
 ```
 
-## Gold Standard Benchmark Results
+## 4. End-to-end drug-target affinity prediction for new data (Use trained model weights on PDBBind v2020 dataset for prediction)
+### Step 1: Create a new virtual environment for ESMFold2
+```bash
+conda create -n esmfold2 python=3.12 -y
+conda activate esmfold2
+pip install torch --index-url https://download.pytorch.org/whl/cu118
+pip install "esm@git+https://github.com/Biohub/esm.git@main"
+export HF_ENDPOINT=https://hf-mirror.com   # download ESMFold2 model weights
+```
+
+### Step2: Run end-to-end prediction
+```bash
+bash scripts/run_predict_pipeline.sh -p "GENFMDIECFMVLNPSQQLAIAVLSLTLGTFTVLENLLVLCVILHSRSLRCRPSYHFIGSLAVADLLGSVIFVYSFIDFHVFHRKDSRNVFLFKLGGVTASFTASVGSLFLAAIDRYISIHRPLAYKRIVTRPKAVVAFCLMWTIAIVIAVLPLLGWNCEKLQSVCSDIFPHIDKTYLMFWIGVVSVLLLFIVYAYMYILWKAHSHAVAKALIVYGSTTGNTEYTAETIARELADAGYEVDSRDAASVEAGGLFEGFDLVLLGCSTWGDDSIELQDDFIPLFDSLEETGAQGRKVACFGCGDSSWEYFCGAVDAIEEKLKNLGAEIVQDGLRIDGDPRAARDDIVGWAHDVRGAIPDQARMDIELAKTLVLILVVLIICWGPLLAIMVYDVFGKMNKLIKTVFAFCSMLCLLNSTVNPIIYALRSKDLRHAFRSMFPS" -s "Cc1nn(CCCNC(=O)c2ccco2)c(C)c1Br" --json -o result.json
+```
+#### Note: -p: full protein sequence; -s: SMILES sequence.
+
+## 5. Gold Standard Benchmark Results
 ### PDBBind v2016
 ![Benchmark_PDBBind_v2016](assets/Benchmark_PDBBind_v2016.png)
 
 ### PDBBind v2020
 ![Benchmark_PDBBind_v2020](assets/Benchmark_PDBBind_v2020.png)
 
-## Usage
+## 6. Other Usage
 
 All commands use the unified CLI (`python -m multigeodta`). Each benchmark has a YAML under `configs/tasks/`; override hyperparameters via CLI flags when needed.
 
@@ -190,10 +202,13 @@ See [`data/zinc/README.md`](data/zinc/README.md) for the full ZINC download, pre
 | `MULTIGEODTA_DATA_DIR` | `./data` or `./create_dataset` | Dataset root |
 | `MULTIGEODTA_OUTPUT_DIR` | `./outputs` | Checkpoints & logs |
 
-## Citation
+## 7. Detailed project documentation
+If you need to make improvements based on MultiGeoDTA or want to gain a deeper understanding of the working mechanism of MultiGeoDTA, please read the more detailed project documentation.[`docs/MultiGeoDTA.md`](docs/MultiGeoDTA.md)
 
-If you use this code, please cite the MultiGeo-DTA paper and contact Yazi Li (liyazi126@126.com) for questions.
+## 8. Citation
 
-## Contact
+If you use this code, please cite the MultiGeo-DTA paper and contact Yazi Li (yazi_li@tongji.edu.cn) for questions.
 
-GitHub issues or liyazi126@126.com
+## 9. Contact
+
+GitHub issues or yazi_li@tongji.edu.cn
