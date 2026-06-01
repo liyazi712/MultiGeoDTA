@@ -6,35 +6,99 @@ import hashlib
 import io
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
 import pandas as pd
 import requests
 import torch
-from Bio.PDB import MMCIFParser, PDBIO
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 PROTEINS_PLUS_API = "https://proteins.plus/api"
 DOGSITE3_REST_URL = f"{PROTEINS_PLUS_API}/dogsite3_rest"
 PDB_FILES_REST_URL = f"{PROTEINS_PLUS_API}/pdb_files_rest"
-DEFAULT_STRUCTURE_CACHE_DIR = REPO_ROOT / "outputs" / "structure_cache"
+DEFAULT_USER_REQUEST_RESULTS_DIR = REPO_ROOT / "outputs" / "user_request_results"
+# Backward-compatible alias for imports that still reference the old name.
+DEFAULT_STRUCTURE_CACHE_DIR = DEFAULT_USER_REQUEST_RESULTS_DIR
+
+
+def request_timestamp() -> str:
+    return datetime.now().strftime("%Y%m%d_%H%M%S")
+
+
+def allocate_request_results_dir(
+    base: Path = DEFAULT_USER_REQUEST_RESULTS_DIR,
+) -> Path:
+    """Create a timestamped directory for one user inference request."""
+    base.mkdir(parents=True, exist_ok=True)
+    stamp = request_timestamp()
+    candidate = base / stamp
+    if not candidate.exists():
+        candidate.mkdir(parents=True)
+        return candidate
+    suffix = 1
+    while (base / f"{stamp}_{suffix}").exists():
+        suffix += 1
+    work_dir = base / f"{stamp}_{suffix}"
+    work_dir.mkdir(parents=True)
+    return work_dir
 
 
 def sequence_cache_key(sequence: str) -> str:
     return hashlib.sha256(sequence.encode()).hexdigest()[:16]
 
 
-def mmcif_to_pdb(cif_path: Path, pdb_path: Path) -> Path:
-    """Convert mmCIF (ESMFold2 output) to PDB for DoGSite3 upload."""
-    parser = MMCIFParser(QUIET=True)
-    structure = parser.get_structure("protein", str(cif_path))
+def esmfold_mmcif_to_pdb(cif_path: Path, pdb_path: Path) -> Path:
+    """Convert ESMFold2 mmCIF to PDB without BioPython (mmCIF omits occupancy)."""
+    records: list[list[str]] = []
+    in_atom_site = False
+    with cif_path.open() as handle:
+        for line in handle:
+            if line.startswith("loop_"):
+                in_atom_site = False
+            elif line.startswith("_atom_site."):
+                in_atom_site = True
+            elif in_atom_site and line.startswith(("ATOM", "HETATM")):
+                records.append(line.split())
+    if not records:
+        raise ValueError(f"No atom records found in {cif_path}")
+
     pdb_path.parent.mkdir(parents=True, exist_ok=True)
-    io = PDBIO()
-    io.set_structure(structure)
-    io.save(str(pdb_path))
+    with pdb_path.open("w") as out:
+        out.write("REMARK   ESMFold2 mmCIF converted to PDB\n")
+        for cols in records:
+            serial = int(cols[18])
+            alt = " " if cols[3] == "." else cols[3][0]
+            resname, chain, resseq = cols[10], cols[11], int(cols[9])
+            icode = " " if cols[8] == "." else cols[8][0]
+            name, elem, bfac = cols[12], cols[1], float(cols[13])
+            x, y, z = map(float, cols[14:17])
+            name_fmt = (f" {name:>3}" if len(elem) == 1 and len(name) <= 3 else f"{name:>4}")[:4]
+            out.write(
+                f"{cols[0]:6}{serial:5d} {name_fmt}{alt}{resname:>3} {chain:1}{resseq:4d}{icode:1}   "
+                f"{x:8.3f}{y:8.3f}{z:8.3f}{1.00:6.2f}{bfac:6.2f}          {elem:>2}\n"
+            )
     return pdb_path
+
+
+def _resolve_cached_protein_pdb(work_dir: Path, cache_key: str) -> Optional[Path]:
+    """Use PDB cache, or convert a leftover mmCIF from current or legacy cache dirs."""
+    cached_pdb = work_dir / "esmfold_protein.pdb"
+    if cached_pdb.exists():
+        return cached_pdb
+
+    legacy_dirs = (
+        REPO_ROOT / "outputs" / "structure_cache" / cache_key,
+        REPO_ROOT / "scripts" / "outputs" / "structure_cache" / cache_key,
+    )
+    for cache_dir in (work_dir, *legacy_dirs):
+        cached_cif = cache_dir / "esmfold_protein.cif"
+        if cached_cif.exists():
+            print(f"Converting cached mmCIF to PDB: {cached_cif}", file=sys.stderr)
+            return esmfold_mmcif_to_pdb(cached_cif, cached_pdb)
+    return None
 
 
 def predict_protein_structure_esmfold2(
@@ -94,11 +158,10 @@ def predict_protein_structure_esmfold2(
         file=sys.stderr,
     )
 
-    output_cif = output_pdb.with_suffix(".cif")
-    output_cif.parent.mkdir(parents=True, exist_ok=True)
-    with output_cif.open("w") as handle:
-        handle.write(result.complex.to_mmcif())
-    return mmcif_to_pdb(output_cif, output_pdb)
+    output_pdb.parent.mkdir(parents=True, exist_ok=True)
+    # MolecularComplex has to_mmcif() but not to_pdb(); convert via ProteinComplex.
+    result.complex.to_protein_complex().to_pdb(output_pdb)
+    return output_pdb
 
 
 def _poll_proteins_plus_job(
@@ -261,7 +324,7 @@ def ensure_structure_files(
     *,
     protein_pdb: Optional[Path],
     pocket_pdb: Optional[Path],
-    cache_dir: Optional[Path],
+    request_results_dir: Optional[Path],
     device_id: int = 0,
     force_repredict: bool = False,
     esmfold_num_loops: int = 3,
@@ -276,17 +339,20 @@ def ensure_structure_files(
 ) -> Tuple[Path, Path, Dict]:
     """Ensure full protein and pocket PDB files exist, running ESMFold2 / DoGSite3 if needed."""
     metadata: Dict = {}
-    work_dir = cache_dir or (DEFAULT_STRUCTURE_CACHE_DIR / sequence_cache_key(protein_sequence))
+    work_dir = request_results_dir or allocate_request_results_dir()
     work_dir.mkdir(parents=True, exist_ok=True)
 
     resolved_protein = protein_pdb
     if resolved_protein is None:
+        cache_key = sequence_cache_key(protein_sequence)
         cached_protein = work_dir / "esmfold_protein.pdb"
-        if cached_protein.exists() and not force_repredict:
-            print(f"Using cached ESMFold2 structure: {cached_protein}", file=sys.stderr)
-            resolved_protein = cached_protein
-            metadata["protein_source"] = "cache"
-        else:
+        if not force_repredict:
+            cached = _resolve_cached_protein_pdb(work_dir, cache_key)
+            if cached is not None:
+                print(f"Using cached ESMFold2 structure: {cached}", file=sys.stderr)
+                resolved_protein = cached
+                metadata["protein_source"] = "cache"
+        if resolved_protein is None:
             resolved_protein = predict_protein_structure_esmfold2(
                 protein_sequence,
                 cached_protein,
@@ -326,5 +392,6 @@ def ensure_structure_files(
         metadata["pocket_source"] = "user"
         metadata["pocket_pdb"] = str(resolved_pocket)
 
-    metadata["structure_cache_dir"] = str(work_dir)
+    metadata["request_results_dir"] = str(work_dir)
+    metadata["request_timestamp"] = work_dir.name
     return resolved_protein, resolved_pocket, metadata

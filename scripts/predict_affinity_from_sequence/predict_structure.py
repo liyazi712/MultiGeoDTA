@@ -5,11 +5,10 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
-from structure_pipeline import DEFAULT_STRUCTURE_CACHE_DIR, ensure_structure_files
+from structure_pipeline import DEFAULT_USER_REQUEST_RESULTS_DIR, ensure_structure_files
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -34,10 +33,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Existing pocket PDB (skip DoGSite3 if set).",
     )
     parser.add_argument(
+        "--request_results_dir",
         "--structure_cache_dir",
         type=Path,
         default=None,
-        help=f"Cache directory (default: {DEFAULT_STRUCTURE_CACHE_DIR}/<hash>).",
+        dest="request_results_dir",
+        help=(
+            f"Directory for this inference request "
+            f"(default: {DEFAULT_USER_REQUEST_RESULTS_DIR}/<YYYYMMDD_HHMMSS>)."
+        ),
     )
     parser.add_argument(
         "--force_repredict",
@@ -55,6 +59,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--dogsite_poll_interval", type=float, default=10.0)
     parser.add_argument("--dogsite_max_attempts", type=int, default=60)
     parser.add_argument(
+        "--output", "-o",
+        type=Path,
+        default=None,
+        help="Optional JSON file to save the structure prediction summary.",
+    )
+    parser.add_argument(
         "--json",
         action="store_true",
         help="Print result paths as JSON to stdout.",
@@ -62,13 +72,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: Optional[List[str]] = None) -> int:
+def main(argv: Optional[list[str]] = None) -> int:
     args = build_arg_parser().parse_args(argv)
     protein_pdb, pocket_pdb, metadata = ensure_structure_files(
         protein_sequence=args.protein_sequence,
         protein_pdb=args.protein_pdb,
         pocket_pdb=args.pocket_pdb,
-        cache_dir=args.structure_cache_dir,
+        request_results_dir=args.request_results_dir,
         device_id=args.device,
         force_repredict=args.force_repredict,
         esmfold_num_loops=args.esmfold_num_loops,
@@ -86,11 +96,18 @@ def main(argv: Optional[List[str]] = None) -> int:
         "pocket_pdb": str(pocket_pdb),
         **metadata,
     }
+    if args.output is not None:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        with args.output.open("w") as handle:
+            json.dump(summary, handle, indent=2)
+
     if args.json:
         print(json.dumps(summary, indent=2))
     else:
         print(f"Protein structure: {protein_pdb}")
         print(f"Pocket structure:  {pocket_pdb}")
+        if args.output is not None:
+            print(f"Saved summary to {args.output}")
     return 0
 
 

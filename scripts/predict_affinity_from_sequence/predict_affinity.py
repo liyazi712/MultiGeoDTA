@@ -50,9 +50,8 @@ from rdkit import Chem
 from rdkit.Chem import AllChem
 from torch.utils.data import DataLoader
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "src"))
-sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
 from multigeodta.data import featurizers  # noqa: E402
 from multigeodta.data.dataset import DTADataset  # noqa: E402
@@ -391,10 +390,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="When structure files are missing, run ESMFold2 (fold) and DoGSite3 (pocket).",
     )
     parser.add_argument(
+        "--request_results_dir",
         "--structure_cache_dir",
         type=Path,
         default=None,
-        help="Directory to cache ESMFold2 / DoGSite3 outputs (default: outputs/structure_cache/<hash>).",
+        dest="request_results_dir",
+        help=(
+            "Directory for this inference request "
+            "(default: outputs/user_request_results/<YYYYMMDD_HHMMSS>)."
+        ),
     )
     parser.add_argument(
         "--force_repredict",
@@ -511,7 +515,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             protein_sequence=args.protein_sequence,
             protein_pdb=protein_pdb,
             pocket_pdb=pocket_pdb,
-            cache_dir=args.structure_cache_dir,
+            request_results_dir=args.request_results_dir,
             device_id=args.device,
             force_repredict=args.force_repredict,
             esmfold_num_loops=args.esmfold_num_loops,
