@@ -2,7 +2,7 @@
 
 MultiGeoDTA is a ***multimodal neural network*** that integrates protein pocket 3D structure, drug 3D structure, protein full sequence, protein pocket sequence, and drug SMILES sequence information to predict drug-target affinity.
 
-MultiGeoDTA architecture
+![MultiGeoDTA architecture](assets/MultiGeoDTA.png)
 
 ## 1. Project layout
 
@@ -94,11 +94,11 @@ bash scripts/run_predict_pipeline.sh -p "GENFMDIECFMVLNPSQQLAIAVLSLTLGTFTVLENLLV
 
 ### PDBBind v2016
 
-Benchmark_PDBBind_v2016
+![Benchmark_PDBBind_v2016](assets/Benchmark_PDBBind_v2016.png)
 
 ### PDBBind v2020
 
-Benchmark_PDBBind_v2020
+![Benchmark_PDBBind_v2020](assets/Benchmark_PDBBind_v2020.png)
 
 ## 6. Other Usage
 
